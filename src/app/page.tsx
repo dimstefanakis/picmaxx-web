@@ -114,20 +114,19 @@ export default function Home() {
       <section className={styles.hero} aria-labelledby="hero-title">
         <div className={styles.copy}>
           <div>
-            <p className={styles.kicker}>Dating apps are chaos.</p>
             <h1 id="hero-title" className={styles.title}>
-              Your pics
+              Get 5x
               <br />
-              should do
+              more
               <br />
-              the <span className={styles.italic}>work</span>
+              matches
             </h1>
           </div>
 
           <div className={styles.promiseRow}>
             <p className={styles.promise}>
-              Join the waitlist to <em>get 5x more matches</em> with photos
-              ranked by real women.
+              Find the photos that put you in the <em>top 10%</em>. Ranked by
+              real women before you swipe.
             </p>
 
             <form className={styles.waitlist} onSubmit={onSubmit}>
