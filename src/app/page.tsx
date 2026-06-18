@@ -2,15 +2,21 @@
 
 import Image from "next/image";
 import Script from "next/script";
-import { FormEvent, useState } from "react";
+import { CSSProperties, FormEvent, useState } from "react";
 import styles from "./page.module.css";
 
-const demoPhotos = [
-  { src: "/demo-photos/submitter-1.jpg", alt: "", width: 1200, height: 1800 },
-  { src: "/demo-photos/feed-2.jpg", alt: "", width: 1200, height: 800 },
-  { src: "/demo-photos/feed-3.jpg", alt: "", width: 1200, height: 1800 },
-  { src: "/demo-photos/submitter-4.jpg", alt: "", width: 1200, height: 800 },
-];
+const comparisonPhotos = {
+  before: {
+    src: "/demo-photos/picmaxx-before.webp",
+    matches: "8 matches",
+    label: "before",
+  },
+  after: {
+    src: "/demo-photos/picmaxx-after.webp",
+    matches: "41 matches",
+    label: "after PicMaxx",
+  },
+};
 
 declare global {
   interface Window {
@@ -28,6 +34,10 @@ function getCookie(name: string) {
 export default function Home() {
   const [status, setStatus] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [comparisonSplit, setComparisonSplit] = useState(64);
+  const comparisonStyle = {
+    "--split": `${comparisonSplit}%`,
+  } as CSSProperties;
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -154,62 +164,62 @@ export default function Home() {
           </div>
         </div>
 
-        <div className={styles.visual} aria-hidden="true">
-          <div className={styles.photoStrip}>
-            {demoPhotos.map((photo) => (
-              <Image
-                key={photo.src}
-                className={styles.photoImage}
-                src={photo.src}
-                alt={photo.alt}
-                width={photo.width}
-                height={photo.height}
-                sizes="(max-width: 720px) 25vw, 120px"
-              />
-            ))}
-          </div>
-
-          <div className={`${styles.tag} ${styles.tagOne}`}>
-            5x more matches
-          </div>
-          <div className={`${styles.tag} ${styles.tagTwo}`}>
-            rated by women
-          </div>
-
-          <div className={styles.phone}>
-            <div className={styles.screen}>
-              <Image
-                className={styles.screenImage}
-                src="/demo-photos/submitter-2.jpg"
-                alt=""
-                width={1200}
-                height={2133}
-                priority
-                sizes="268px"
-              />
-              <div className={styles.screenContent}>
-                <div className={styles.votePill}>
-                  <span>photo 03</span>
-                  <span>keep</span>
+        <div className={styles.visual}>
+          <div className={styles.comparisonShell}>
+            <div className={styles.comparisonFrame} style={comparisonStyle}>
+              <div className={`${styles.comparisonLayer} ${styles.beforeLayer}`}>
+                <Image
+                  className={styles.comparisonImage}
+                  src={comparisonPhotos.before.src}
+                  alt="Before PicMaxx profile photo"
+                  fill
+                  priority
+                  sizes="(max-width: 720px) 86vw, (max-width: 1080px) 440px, 36vw"
+                />
+                <div className={`${styles.matchBadge} ${styles.beforeBadge}`}>
+                  <span>{comparisonPhotos.before.label}</span>
+                  <strong>{comparisonPhotos.before.matches}</strong>
                 </div>
-                <div className={styles.score}>
-                  <strong>9.1</strong>
-                  <span>top profile photo</span>
+              </div>
+
+              <div className={`${styles.comparisonLayer} ${styles.afterLayer}`}>
+                <Image
+                  className={styles.comparisonImage}
+                  src={comparisonPhotos.after.src}
+                  alt="After PicMaxx profile photo"
+                  fill
+                  priority
+                  sizes="(max-width: 720px) 86vw, (max-width: 1080px) 440px, 36vw"
+                />
+                <div className={`${styles.matchBadge} ${styles.afterBadge}`}>
+                  <span>{comparisonPhotos.after.label}</span>
+                  <strong>{comparisonPhotos.after.matches}</strong>
+                </div>
+              </div>
+
+              <input
+                className={styles.sliderInput}
+                type="range"
+                min="18"
+                max="82"
+                value={comparisonSplit}
+                onChange={(event) =>
+                  setComparisonSplit(Number(event.currentTarget.value))
+                }
+                aria-label="Reveal the before and after photo comparison"
+              />
+
+              <div className={styles.sliderRail}>
+                <div className={styles.sliderHandle}>
+                  <span />
+                  <span />
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className={styles.ticker}>
-            <div className={styles.tickerTrack}>
-              <span>get 5x more matches</span>
-              <span>real ratings</span>
-              <span>better first photo</span>
-              <span>paid reviewers</span>
-              <span>get 5x more matches</span>
-              <span>real ratings</span>
-              <span>better first photo</span>
-              <span>paid reviewers</span>
+            <div className={styles.liftBadge}>
+              <span>5.1x lift</span>
+              <strong>photo order fixed</strong>
             </div>
           </div>
         </div>
