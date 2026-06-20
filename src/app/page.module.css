@@ -142,14 +142,56 @@
   gap: 10px;
 }
 
-.emailLine {
+.emailLine,
+.payCta {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
   min-height: 64px;
   border: 1px solid var(--ink);
   background: var(--paper);
   box-shadow: 8px 8px 0 var(--ink);
+}
+
+.payCta {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 70px;
+  color: var(--ink);
+  text-decoration: none;
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.payCta:hover {
+  background: var(--acid);
+  box-shadow: 5px 5px 0 var(--ink);
+  transform: translate(3px, 3px);
+}
+
+.payCta span,
+.payCta strong {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.payCta span {
+  padding: 0 18px;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.payCta strong {
+  min-width: 148px;
+  justify-content: center;
+  border-left: 1px solid var(--ink);
+  background: var(--acid);
+  font-size: 12px;
+  font-weight: 950;
 }
 
 .emailLine input {
@@ -527,7 +569,8 @@
     padding-top: 22px;
   }
 
-  .emailLine {
+  .emailLine,
+  .payCta {
     grid-template-columns: 1fr;
     box-shadow: 6px 6px 0 var(--ink);
   }
@@ -538,6 +581,16 @@
 
   .emailLine button {
     min-height: 56px;
+    border-top: 1px solid var(--ink);
+    border-left: 0;
+  }
+
+  .payCta span,
+  .payCta strong {
+    min-height: 56px;
+  }
+
+  .payCta strong {
     border-top: 1px solid var(--ink);
     border-left: 0;
   }
