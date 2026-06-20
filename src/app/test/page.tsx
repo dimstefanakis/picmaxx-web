@@ -203,14 +203,20 @@ export default function PhotoTestPage() {
       const checkout = (await checkoutResponse.json()) as {
         ok: true;
         checkoutUrl: string;
+        initiateCheckoutEventId: string;
       };
 
-      window.fbq?.("track", "InitiateCheckout", {
-        value: 9,
-        currency: "USD",
-        content_name: selectedPackage.title,
-        content_type: packageId,
-      });
+      window.fbq?.(
+        "track",
+        "InitiateCheckout",
+        {
+          value: 9,
+          currency: "USD",
+          content_name: selectedPackage.title,
+          content_type: packageId,
+        },
+        { eventID: checkout.initiateCheckoutEventId },
+      );
       window.location.href = checkout.checkoutUrl;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong. Try again.");
