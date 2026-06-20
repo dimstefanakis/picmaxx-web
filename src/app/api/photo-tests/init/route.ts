@@ -1,9 +1,11 @@
 import {
   extensionForImageType,
+  isValidPhotoCount,
   isPhotoTestPackageId,
   isValidEmail,
   isVoterAgeRange,
   normalizeEmail,
+  photoCountLabel,
   photoTestPackages,
   validatePhotoMeta,
   type PhotoUploadMeta,
@@ -65,9 +67,9 @@ export async function POST(request: Request) {
 
     const config = photoTestPackages[body.packageId];
     const files = Array.isArray(body.files) ? body.files : [];
-    if (files.length !== config.photoCount) {
+    if (!isValidPhotoCount(body.packageId, files.length)) {
       return jsonError(
-        `${config.title} requires exactly ${config.photoCount} photo${config.photoCount === 1 ? "" : "s"}.`,
+        `${config.title} requires ${photoCountLabel(body.packageId)}.`,
       );
     }
 

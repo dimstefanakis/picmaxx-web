@@ -36,11 +36,89 @@ export async function sendMetaPurchaseEvent({
   amountCents: number;
   currency: string;
 }) {
+  return sendMetaCommerceEvent({
+    eventName: "Purchase",
+    email,
+    eventId,
+    sourceUrl,
+    userAgent,
+    ipAddress,
+    fbp,
+    fbc,
+    packageId,
+    amountCents,
+    currency,
+  });
+}
+
+export async function sendMetaInitiateCheckoutEvent({
+  email,
+  eventId,
+  sourceUrl,
+  userAgent,
+  ipAddress,
+  fbp,
+  fbc,
+  packageId,
+  amountCents,
+  currency,
+}: {
+  email: string;
+  eventId: string;
+  sourceUrl: string;
+  userAgent: string;
+  ipAddress: string;
+  fbp: string;
+  fbc: string;
+  packageId: string;
+  amountCents: number;
+  currency: string;
+}) {
+  return sendMetaCommerceEvent({
+    eventName: "InitiateCheckout",
+    email,
+    eventId,
+    sourceUrl,
+    userAgent,
+    ipAddress,
+    fbp,
+    fbc,
+    packageId,
+    amountCents,
+    currency,
+  });
+}
+
+async function sendMetaCommerceEvent({
+  eventName,
+  email,
+  eventId,
+  sourceUrl,
+  userAgent,
+  ipAddress,
+  fbp,
+  fbc,
+  packageId,
+  amountCents,
+  currency,
+}: {
+  eventName: "InitiateCheckout" | "Purchase";
+  email: string;
+  eventId: string;
+  sourceUrl: string;
+  userAgent: string;
+  ipAddress: string;
+  fbp: string;
+  fbc: string;
+  packageId: string;
+  amountCents: number;
+  currency: string;
+}) {
   const accessToken = requiredEnv("META_ACCESS_TOKEN");
   const payload = {
     data: [
       {
-        event_name: "Purchase",
+        event_name: eventName,
         event_time: Math.floor(Date.now() / 1000),
         event_id: eventId,
         action_source: "website",

@@ -7,6 +7,8 @@ import {
   PhotoTestPackageId,
   VoterAgeRange,
   inferImageType,
+  isValidPhotoCount,
+  photoCountLabel,
   photoTestPackages,
   validatePhotoMeta,
   voterAgeRanges,
@@ -58,8 +60,8 @@ export default function PhotoTestPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedPackage = photoTestPackages[packageId];
-  const requiredPhotos = selectedPackage.photoCount;
-  const visiblePhotos = photos.slice(0, requiredPhotos);
+  const maxPhotos = selectedPackage.maxPhotoCount;
+  const visiblePhotos = photos.slice(0, maxPhotos);
   const readyCount = visiblePhotos.filter(Boolean).length;
   const selectedAgeRange =
     voterAgeRanges.find((range) => range.value === voterAgeRange) ?? voterAgeRanges[1];
@@ -72,10 +74,10 @@ export default function PhotoTestPage() {
 
   function choosePackage(nextPackageId: PhotoTestPackageId) {
     setPackageId(nextPackageId);
-    const nextRequiredPhotos = photoTestPackages[nextPackageId].photoCount;
+    const nextMaxPhotos = photoTestPackages[nextPackageId].maxPhotoCount;
     setPhotos((current) => {
       const next = [...current];
-      for (let index = nextRequiredPhotos; index < next.length; index += 1) {
+      for (let index = nextMaxPhotos; index < next.length; index += 1) {
         const photo = next[index];
         if (photo) {
           URL.revokeObjectURL(photo.previewUrl);
@@ -130,8 +132,8 @@ export default function PhotoTestPage() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       return "Enter the email where you want results sent.";
     }
-    if (readyCount !== requiredPhotos) {
-      return `Add exactly ${requiredPhotos} photo${requiredPhotos === 1 ? "" : "s"}.`;
+    if (!isValidPhotoCount(packageId, readyCount)) {
+      return `Add ${photoCountLabel(packageId)}.`;
     }
     if (!consent) {
       return "Confirm these photos are appropriate for private feedback.";
@@ -203,14 +205,20 @@ export default function PhotoTestPage() {
       const checkout = (await checkoutResponse.json()) as {
         ok: true;
         checkoutUrl: string;
+        initiateCheckoutEventId: string;
       };
 
-      window.fbq?.("track", "InitiateCheckout", {
-        value: 9,
-        currency: "USD",
-        content_name: selectedPackage.title,
-        content_type: packageId,
-      });
+      window.fbq?.(
+        "track",
+        "InitiateCheckout",
+        {
+          value: 9,
+          currency: "USD",
+          content_name: selectedPackage.title,
+          content_type: packageId,
+        },
+        { eventID: checkout.initiateCheckoutEventId },
+      );
       window.location.href = checkout.checkoutUrl;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong. Try again.");
@@ -300,7 +308,7 @@ export default function PhotoTestPage() {
             <h2 id="upload-title">Add photos</h2>
           </div>
           <div className={styles.uploadGrid}>
-            {Array.from({ length: requiredPhotos }).map((_, index) => (
+            {Array.from({ length: maxPhotos }).map((_, index) => (
               <PhotoSlot
                 key={`${packageId}-${index}`}
                 index={index}
@@ -338,7 +346,7 @@ export default function PhotoTestPage() {
 
         <div className={styles.summary}>
           <span>
-            {readyCount}/{requiredPhotos} photos ready · voters {selectedAgeRange.label}
+            {readyCount}/{maxPhotos} photos ready · voters {selectedAgeRange.label}
           </span>
           <strong>{selectedPackage.resultCopy}</strong>
         </div>

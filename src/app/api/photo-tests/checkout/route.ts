@@ -1,11 +1,13 @@
 import {
   PHOTO_TEST_CURRENCY,
   PHOTO_TEST_PRICE_CENTS,
+  isValidPhotoCount,
   isPhotoTestPackageId,
   photoTestPackages,
 } from "@/lib/photo-test";
 import { updatePaidTestRecord } from "@/lib/server/airtable";
 import { siteUrl } from "@/lib/server/env";
+import { sendMetaInitiateCheckoutEvent } from "@/lib/server/meta";
 import { verifyPhotoTestOrderToken } from "@/lib/server/photo-test-order-token";
 import { r2ObjectExists } from "@/lib/server/r2";
 import { stripeClient } from "@/lib/server/stripe";
@@ -33,7 +35,7 @@ export async function POST(request: Request) {
       return jsonError("Order package is invalid.", 409);
     }
 
-    if (order.r2Keys.length !== photoTestPackages[order.packageId].photoCount) {
+    if (!isValidPhotoCount(order.packageId, order.r2Keys.length)) {
       return jsonError("Order photos are incomplete.", 409);
     }
 
@@ -44,6 +46,7 @@ export async function POST(request: Request) {
 
     const origin = siteUrl();
     const config = photoTestPackages[order.packageId];
+    const initiateCheckoutEventId = `${order.orderId}_initiate_checkout`;
     const session = await stripeClient().checkout.sessions.create({
       mode: "payment",
       customer_email: order.email,
@@ -71,6 +74,7 @@ export async function POST(request: Request) {
         fbc: metadataString(order.fbc),
         userAgent: metadataString(order.userAgent),
         ipAddress: metadataString(order.ipAddress),
+        initiateCheckoutEventId,
       },
       success_url: `${origin}/test/success?order=${encodeURIComponent(order.orderId)}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/test?order=${encodeURIComponent(order.orderId)}`,
@@ -82,9 +86,23 @@ export async function POST(request: Request) {
       "Payment Status": session.payment_status ?? "unpaid",
     });
 
+    await sendMetaInitiateCheckoutEvent({
+      email: order.email,
+      eventId: initiateCheckoutEventId,
+      sourceUrl: order.sourceUrl,
+      userAgent: order.userAgent,
+      ipAddress: order.ipAddress,
+      fbp: order.fbp,
+      fbc: order.fbc,
+      packageId: order.packageId,
+      amountCents: PHOTO_TEST_PRICE_CENTS,
+      currency: PHOTO_TEST_CURRENCY,
+    }).catch((error) => console.error(error));
+
     return Response.json({
       ok: true,
       checkoutUrl: session.url,
+      initiateCheckoutEventId,
     });
   } catch (error) {
     if (error instanceof SyntaxError) {

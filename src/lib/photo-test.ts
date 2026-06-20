@@ -8,7 +8,8 @@ export const photoTestPackages = {
     title: "Score one photo",
     shortTitle: "Photo score",
     price: "$9",
-    photoCount: 1,
+    minPhotoCount: 1,
+    maxPhotoCount: 1,
     stripeName: "Picmaxx Photo Score",
     airtableLabel: "Score one photo",
     eyebrow: "1 photo",
@@ -21,10 +22,11 @@ export const photoTestPackages = {
     title: "Find my best photo",
     shortTitle: "Best photo",
     price: "$9",
-    photoCount: 3,
+    minPhotoCount: 2,
+    maxPhotoCount: 3,
     stripeName: "Picmaxx Best Photo Test",
     airtableLabel: "Find my best photo",
-    eyebrow: "3 photos",
+    eyebrow: "2-3 photos",
     promise: "20 women pick the photo most likely to get you matches.",
     helper: "Best for choosing what to use first on Hinge, Tinder, or Bumble.",
     resultCopy: "Winner, ranking, and light signal on each photo.",
@@ -86,6 +88,20 @@ export function isPhotoTestPackageId(value: unknown): value is PhotoTestPackageI
 
 export function isVoterAgeRange(value: unknown): value is VoterAgeRange {
   return typeof value === "string" && voterAgeRanges.some((range) => range.value === value);
+}
+
+export function isValidPhotoCount(packageId: PhotoTestPackageId, count: number) {
+  const config = photoTestPackages[packageId];
+  return count >= config.minPhotoCount && count <= config.maxPhotoCount;
+}
+
+export function photoCountLabel(packageId: PhotoTestPackageId) {
+  const config = photoTestPackages[packageId];
+  if (config.minPhotoCount === config.maxPhotoCount) {
+    return `${config.minPhotoCount} photo${config.minPhotoCount === 1 ? "" : "s"}`;
+  }
+
+  return `${config.minPhotoCount} or ${config.maxPhotoCount} photos`;
 }
 
 export function normalizeEmail(value: unknown) {
