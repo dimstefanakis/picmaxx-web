@@ -1,6 +1,7 @@
 import {
   PHOTO_TEST_CURRENCY,
   PHOTO_TEST_PRICE_CENTS,
+  isValidPhotoCount,
   isPhotoTestPackageId,
   photoTestPackages,
 } from "@/lib/photo-test";
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
       return jsonError("Order package is invalid.", 409);
     }
 
-    if (order.r2Keys.length !== photoTestPackages[order.packageId].photoCount) {
+    if (!isValidPhotoCount(order.packageId, order.r2Keys.length)) {
       return jsonError("Order photos are incomplete.", 409);
     }
 
