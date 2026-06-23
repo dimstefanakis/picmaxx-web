@@ -25,6 +25,7 @@ type InitBody = {
   referrer?: unknown;
   fbp?: unknown;
   fbc?: unknown;
+  returnPath?: unknown;
 };
 
 function jsonError(message: string, status = 400) {
@@ -46,6 +47,11 @@ function clientIp(headers: Headers) {
     headers.get("x-forwarded-for") ??
     "";
   return forwardedFor.split(",")[0]?.trim() ?? "";
+}
+
+function checkoutReturnPath(value: unknown) {
+  if (value === "/photo-test") return value;
+  return undefined;
 }
 
 export async function POST(request: Request) {
@@ -104,6 +110,7 @@ export async function POST(request: Request) {
     const fbc = String(body.fbc ?? "");
     const userAgent = request.headers.get("user-agent") ?? "";
     const ipAddress = clientIp(request.headers);
+    const returnPath = checkoutReturnPath(body.returnPath);
     const record = await createPaidTestRecord({
       "Order ID": id,
       Email: email,
@@ -135,6 +142,7 @@ export async function POST(request: Request) {
       fbc,
       userAgent,
       ipAddress,
+      returnPath,
       expiresAt: Date.now() + 60 * 60 * 1000,
     });
 

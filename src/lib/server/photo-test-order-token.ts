@@ -15,6 +15,7 @@ export type PhotoTestOrderTokenPayload = {
   fbc: string;
   userAgent: string;
   ipAddress: string;
+  returnPath?: string;
   expiresAt: number;
 };
 

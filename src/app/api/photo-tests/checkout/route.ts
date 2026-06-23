@@ -47,6 +47,7 @@ export async function POST(request: Request) {
     const origin = siteUrl();
     const config = photoTestPackages[order.packageId];
     const initiateCheckoutEventId = `${order.orderId}_initiate_checkout`;
+    const cancelPath = order.returnPath ?? "/test";
     const session = await stripeClient().checkout.sessions.create({
       mode: "payment",
       customer_email: order.email,
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
         initiateCheckoutEventId,
       },
       success_url: `${origin}/test/success?order=${encodeURIComponent(order.orderId)}&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/test?order=${encodeURIComponent(order.orderId)}`,
+      cancel_url: `${origin}${cancelPath}?order=${encodeURIComponent(order.orderId)}`,
     });
 
     await updatePaidTestRecord(order.airtableRecordId, {
