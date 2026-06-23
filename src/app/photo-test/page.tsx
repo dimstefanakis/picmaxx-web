@@ -246,23 +246,9 @@ export default function PhotoTestAdPage() {
             Find your most swipeable photo.
           </h1>
           <p className={styles.subcopy}>
-            Upload 2-3 options. Real women compare them like a profile first
-            impression and we email the winner within 24 hours.
+            Upload the shots you are considering. Real women compare them like a
+            profile first impression and we email the clearest lead within 24 hours.
           </p>
-          <div className={styles.heroStats} aria-label="Photo test summary">
-            <span>
-              <strong>20</strong>
-              women
-            </span>
-            <span>
-              <strong>2-3</strong>
-              options
-            </span>
-            <span>
-              <strong>1</strong>
-              winner
-            </span>
-          </div>
         </div>
 
         <div className={styles.phonePreview} aria-label="Example result preview">
