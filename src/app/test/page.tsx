@@ -54,7 +54,6 @@ export default function PhotoTestPage() {
   const [voterAgeRange, setVoterAgeRange] = useState<VoterAgeRange>("25-34");
   const [email, setEmail] = useState("");
   const [photos, setPhotos] = useState<(SelectedPhoto | null)[]>([null, null, null]);
-  const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -134,9 +133,6 @@ export default function PhotoTestPage() {
     }
     if (!isValidPhotoCount(packageId, readyCount)) {
       return `Add ${photoCountLabel(packageId)}.`;
-    }
-    if (!consent) {
-      return "Confirm these photos are appropriate for private feedback.";
     }
     return "";
   }
@@ -334,14 +330,6 @@ export default function PhotoTestPage() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
-          <label className={styles.consent}>
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(event) => setConsent(event.target.checked)}
-            />
-            <span>These are appropriate dating photos of me, and I want private feedback.</span>
-          </label>
         </section>
 
         <div className={styles.summary}>
