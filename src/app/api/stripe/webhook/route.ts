@@ -7,6 +7,7 @@ import {
 import { updatePaidTestRecord } from "@/lib/server/airtable";
 import { requiredEnv } from "@/lib/server/env";
 import { sendMetaPurchaseEvent } from "@/lib/server/meta";
+import { getPostHogClient } from "@/lib/posthog-server";
 import { stripeClient } from "@/lib/server/stripe";
 
 export const runtime = "nodejs";
@@ -56,6 +57,22 @@ export async function POST(request: Request) {
     "Payment Status": session.payment_status ?? "paid",
     "Stripe Session ID": session.id,
     "Paid At": paidAt,
+  });
+
+  const purchaseEmail =
+    fieldString(session.customer_details?.email) ||
+    fieldString(session.customer_email) ||
+    fieldString(session.metadata?.email);
+  getPostHogClient().capture({
+    distinctId: purchaseEmail || orderId,
+    event: "photo_test_purchase_confirmed",
+    properties: {
+      order_id: orderId,
+      stripe_session_id: session.id,
+      package_id: fieldString(session.metadata?.packageId),
+      amount_cents: PHOTO_TEST_PRICE_CENTS,
+      currency: PHOTO_TEST_CURRENCY,
+    },
   });
 
   const email =
