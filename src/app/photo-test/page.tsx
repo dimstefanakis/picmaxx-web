@@ -251,18 +251,19 @@ export default function PhotoTestAdPage() {
           <span className={styles.brandMark}>picmaxx</span>
           <span className={styles.brandDot} aria-hidden="true" />
         </div>
-        <span className={styles.topPill}>score + rank</span>
+        <span className={styles.topPill}>5x photo test</span>
       </header>
 
       <section className={styles.hero} aria-labelledby="photo-test-title">
         <div className={styles.heroCopy}>
-          <p className={styles.eyebrow}>Photo test for dating apps</p>
+          <p className={styles.eyebrow}>For guys on Tinder, Hinge, and Bumble</p>
           <h1 id="photo-test-title" className={styles.title}>
-            Find your most swipeable photo.
+            Find the photo that gets 5x more matches.
           </h1>
           <p className={styles.subcopy}>
-            Upload the shots you are considering. Real women compare them like a
-            profile first impression and we email the clearest lead within 24 hours.
+            There is probably a shot in your gallery that performs way better than
+            the rest. Upload 2-3 contenders and women in your dating range pick the
+            one most likely to make the algorithm notice.
           </p>
         </div>
 
@@ -307,8 +308,8 @@ export default function PhotoTestAdPage() {
             </div>
           </div>
           <p className={styles.previewNote}>
-            Result: lead with the strongest first impression. Score shows the swipe signal
-            behind each shot.
+            Result: lead with the photo that creates the strongest first impression.
+            Score shows the swipe signal behind each shot.
           </p>
         </div>
       </section>
@@ -316,27 +317,28 @@ export default function PhotoTestAdPage() {
       <section className={styles.contextBand} aria-label="How Picmaxx works">
         <div className={styles.contextItem}>
           <span>01</span>
-          <strong>Add contenders</strong>
-          <p>Choose the shots you are considering for Hinge, Tinder, or Bumble.</p>
+          <strong>Drop your contenders</strong>
+          <p>Choose the photos you think might work on Hinge, Tinder, or Bumble.</p>
         </div>
         <div className={styles.contextItem}>
           <span>02</span>
-          <strong>First impression vote</strong>
-          <p>Reviewers pick the photo they would lead with.</p>
+          <strong>Women vote privately</strong>
+          <p>Reviewers pick the one they would be most likely to swipe on.</p>
         </div>
         <div className={styles.contextItem}>
           <span>03</span>
-          <strong>Clear profile move</strong>
-          <p>Lead with the top score and keep the rest as backups.</p>
+          <strong>Lead with the winner</strong>
+          <p>Put the strongest photo first and stop wasting matches on the wrong opener.</p>
         </div>
       </section>
 
       <section className={styles.signalPanel} aria-label="Why the first photo matters">
-        <span>Why it compounds</span>
-        <strong>Better first photos can earn more pauses, likes, and replies.</strong>
+        <span>Why 5x happens</span>
+        <strong>Dating app results compound off the first photo.</strong>
         <p>
-          Dating apps look for engagement signals. A stronger lead photo can improve the
-          first swipe decision, giving the rest of your profile more chances to work.
+          A better lead photo can earn more pauses, likes, and replies. Those signals
+          can push your profile further, which is why the gap between a good pic and
+          a great one can feel exponential.
         </p>
       </section>
 
