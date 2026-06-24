@@ -12,6 +12,7 @@ import {
 } from "@/lib/photo-test";
 import { createPaidTestRecord } from "@/lib/server/airtable";
 import { createPhotoTestOrderToken } from "@/lib/server/photo-test-order-token";
+import { getPostHogClient } from "@/lib/posthog-server";
 import { createUploadUrl } from "@/lib/server/r2";
 
 export const runtime = "nodejs";
@@ -144,6 +145,18 @@ export async function POST(request: Request) {
       ipAddress,
       returnPath,
       expiresAt: Date.now() + 60 * 60 * 1000,
+    });
+
+    getPostHogClient().capture({
+      distinctId: email,
+      event: "photo_test_order_created",
+      properties: {
+        order_id: id,
+        package_id: body.packageId,
+        voter_age_range: body.voterAgeRange,
+        photo_count: files.length,
+        source_url: sourceUrl,
+      },
     });
 
     return Response.json({

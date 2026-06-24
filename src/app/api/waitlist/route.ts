@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createHash } from "node:crypto";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 const AIRTABLE_BASE_ID = "apptoTG8pT2MzzdiM";
 const AIRTABLE_TABLE_ID = "tbl7KJaUAxqNqPxWs";
@@ -221,6 +222,17 @@ export async function POST(request: NextRequest) {
     console.error(error);
     return jsonError("Could not save waitlist signup.", 502);
   }
+
+  const posthog = getPostHogClient();
+  posthog.identify({ distinctId: email, properties: { email } });
+  posthog.capture({
+    distinctId: email,
+    event: "waitlist_signup_submitted",
+    properties: {
+      source_url: sourceUrl,
+      audience,
+    },
+  });
 
   try {
     const metaResponse = await sendMetaLeadEvent({

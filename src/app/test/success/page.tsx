@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import posthog from "posthog-js";
 
 import { PHOTO_TEST_CURRENCY, PHOTO_TEST_PRICE_CENTS } from "@/lib/photo-test";
 import styles from "../test.module.css";
@@ -16,6 +17,16 @@ export default function PhotoTestSuccessPage() {
   useEffect(() => {
     const orderId = new URLSearchParams(window.location.search).get("order");
     if (!orderId) return;
+
+    const posthogStorageKey = `picmaxx_posthog_purchase_${orderId}`;
+    if (!window.sessionStorage.getItem(posthogStorageKey)) {
+      posthog.capture("purchase_completed", {
+        order_id: orderId,
+        value: PHOTO_TEST_PRICE_CENTS / 100,
+        currency: PHOTO_TEST_CURRENCY.toUpperCase(),
+      });
+      window.sessionStorage.setItem(posthogStorageKey, "1");
+    }
 
     const storageKey = `picmaxx_purchase_${orderId}`;
     let retries = 0;

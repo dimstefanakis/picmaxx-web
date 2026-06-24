@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
+import posthog from "posthog-js";
 
 import {
   PhotoTestPackageId,
@@ -72,6 +73,10 @@ export default function PhotoTestPage() {
   }, [isSubmitting, packageId, status]);
 
   function choosePackage(nextPackageId: PhotoTestPackageId) {
+    posthog.capture("package_selected", {
+      package_id: nextPackageId,
+      max_photos: photoTestPackages[nextPackageId].maxPhotoCount,
+    });
     setPackageId(nextPackageId);
     const nextMaxPhotos = photoTestPackages[nextPackageId].maxPhotoCount;
     setPhotos((current) => {
@@ -105,6 +110,10 @@ export default function PhotoTestPage() {
     }
 
     setError("");
+    posthog.capture("photo_upload_added", {
+      photo_index: index,
+      package_id: packageId,
+    });
     setPhotos((current) => {
       const next = [...current];
       const previous = next[index];
@@ -215,6 +224,13 @@ export default function PhotoTestPage() {
         },
         { eventID: checkout.initiateCheckoutEventId },
       );
+      posthog.identify(email, { email });
+      posthog.capture("checkout_initiated", {
+        package_id: packageId,
+        voter_age_range: voterAgeRange,
+        photo_count: finalPhotos.length,
+        order_id: initData.orderId,
+      });
       window.location.href = checkout.checkoutUrl;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong. Try again.");

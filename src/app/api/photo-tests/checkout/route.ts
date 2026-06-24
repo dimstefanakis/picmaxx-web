@@ -8,6 +8,7 @@ import {
 import { updatePaidTestRecord } from "@/lib/server/airtable";
 import { siteUrl } from "@/lib/server/env";
 import { sendMetaInitiateCheckoutEvent } from "@/lib/server/meta";
+import { getPostHogClient } from "@/lib/posthog-server";
 import { verifyPhotoTestOrderToken } from "@/lib/server/photo-test-order-token";
 import { r2ObjectExists } from "@/lib/server/r2";
 import { stripeClient } from "@/lib/server/stripe";
@@ -99,6 +100,16 @@ export async function POST(request: Request) {
       amountCents: PHOTO_TEST_PRICE_CENTS,
       currency: PHOTO_TEST_CURRENCY,
     }).catch((error) => console.error(error));
+
+    getPostHogClient().capture({
+      distinctId: order.email,
+      event: "photo_test_checkout_started",
+      properties: {
+        order_id: order.orderId,
+        package_id: order.packageId,
+        stripe_session_id: session.id,
+      },
+    });
 
     return Response.json({
       ok: true,
