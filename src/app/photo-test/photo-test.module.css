@@ -687,24 +687,6 @@
   background: white;
 }
 
-.consent {
-  display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 10px;
-  align-items: start;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.25;
-  letter-spacing: 0;
-}
-
-.consent input {
-  width: 20px;
-  height: 20px;
-  accent-color: var(--ink);
-}
-
 .summary {
   display: grid;
   gap: 4px;
