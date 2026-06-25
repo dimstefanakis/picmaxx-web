@@ -13,6 +13,15 @@ function truncate(value: string, maxLength = 4000) {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
 
+function fbcFromUrl(sourceUrl: string) {
+  try {
+    const fbclid = new URL(sourceUrl).searchParams.get("fbclid");
+    return fbclid ? `fb.1.${Date.now()}.${fbclid}` : "";
+  } catch {
+    return "";
+  }
+}
+
 export async function sendMetaPurchaseEvent({
   email,
   eventId,
@@ -48,6 +57,65 @@ export async function sendMetaPurchaseEvent({
     packageId,
     amountCents,
     currency,
+  });
+}
+
+export async function sendMetaPageViewEvent({
+  eventId,
+  sourceUrl,
+  userAgent,
+  ipAddress,
+  fbp,
+  fbc,
+}: {
+  eventId: string;
+  sourceUrl: string;
+  userAgent: string;
+  ipAddress: string;
+  fbp: string;
+  fbc: string;
+}) {
+  return sendMetaEvent({
+    eventName: "PageView",
+    eventId,
+    sourceUrl,
+    userAgent,
+    ipAddress,
+    fbp,
+    fbc,
+  });
+}
+
+export async function sendMetaLeadEvent({
+  email,
+  eventId,
+  sourceUrl,
+  userAgent,
+  ipAddress,
+  fbp,
+  fbc,
+}: {
+  email: string;
+  eventId: string;
+  sourceUrl: string;
+  userAgent: string;
+  ipAddress: string;
+  fbp: string;
+  fbc: string;
+}) {
+  return sendMetaEvent({
+    eventName: "Lead",
+    eventId,
+    sourceUrl,
+    userAgent,
+    ipAddress,
+    fbp,
+    fbc,
+    email,
+    customData: {
+      content_name: "PicMaxx Waitlist",
+      lead_type: "male_waitlist",
+    },
   });
 }
 
@@ -114,7 +182,47 @@ async function sendMetaCommerceEvent({
   amountCents: number;
   currency: string;
 }) {
+  return sendMetaEvent({
+    eventName,
+    eventId,
+    sourceUrl,
+    userAgent,
+    ipAddress,
+    fbp,
+    fbc,
+    email,
+    customData: {
+      content_name: "Picmaxx Paid Photo Test",
+      content_type: packageId,
+      currency: currency.toUpperCase(),
+      value: amountCents / 100,
+    },
+  });
+}
+
+async function sendMetaEvent({
+  eventName,
+  eventId,
+  sourceUrl,
+  userAgent,
+  ipAddress,
+  fbp,
+  fbc,
+  email,
+  customData,
+}: {
+  eventName: "PageView" | "Lead" | "InitiateCheckout" | "Purchase";
+  eventId: string;
+  sourceUrl: string;
+  userAgent: string;
+  ipAddress: string;
+  fbp: string;
+  fbc: string;
+  email?: string;
+  customData?: Record<string, string | number>;
+}) {
   const accessToken = requiredEnv("META_ACCESS_TOKEN");
+  const effectiveFbc = fbc || fbcFromUrl(sourceUrl);
   const payload = {
     data: [
       {
@@ -124,18 +232,14 @@ async function sendMetaCommerceEvent({
         action_source: "website",
         event_source_url: sourceUrl,
         user_data: {
-          em: [sha256(email)],
+          ...(email ? { em: [sha256(email)] } : {}),
+          ...(email ? { external_id: [sha256(email)] } : {}),
           client_ip_address: ipAddress,
           client_user_agent: userAgent,
           fbp: fbp || undefined,
-          fbc: fbc || undefined,
+          fbc: effectiveFbc || undefined,
         },
-        custom_data: {
-          content_name: "Picmaxx Paid Photo Test",
-          content_type: packageId,
-          currency: currency.toUpperCase(),
-          value: amountCents / 100,
-        },
+        ...(customData ? { custom_data: customData } : {}),
       },
     ],
     ...(process.env.META_TEST_EVENT_CODE
