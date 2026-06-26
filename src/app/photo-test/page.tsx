@@ -251,19 +251,19 @@ export default function PhotoTestAdPage() {
           <span className={styles.brandMark}>picmaxx</span>
           <span className={styles.brandDot} aria-hidden="true" />
         </div>
-        <span className={styles.topPill}>5x photo test</span>
       </header>
 
       <section className={styles.hero} aria-labelledby="photo-test-title">
         <div className={styles.heroCopy}>
-          <p className={styles.eyebrow}>For guys on Tinder, Hinge, and Bumble</p>
+          <p className={styles.eyebrow}>Fix your Tinder, Hinge, and Bumble algo</p>
           <h1 id="photo-test-title" className={styles.title}>
-            Find the photo that gets 5x more matches.
+            Find the photo that gets{" "}
+            <span className={styles.titleAccent}>5x more matches.</span>
           </h1>
           <p className={styles.subcopy}>
-            There is probably a shot in your gallery that performs way better than
-            the rest. Upload 2-3 contenders and women in your dating range pick the
-            one most likely to make the algorithm notice.
+            <strong>One photo can change how the whole profile performs.</strong>{" "}
+            Upload your best pics and women in your dating range pick the one
+            most likely to make the algorithm notice.
           </p>
         </div>
 
@@ -308,8 +308,9 @@ export default function PhotoTestAdPage() {
             </div>
           </div>
           <p className={styles.previewNote}>
-            Result: lead with the photo that creates the strongest first impression.
-            Score shows the swipe signal behind each shot.
+            Result: lead with the photo that creates the{" "}
+            <strong>strongest first impression</strong>. Score shows the swipe
+            signal behind each shot.
           </p>
         </div>
       </section>
@@ -334,11 +335,13 @@ export default function PhotoTestAdPage() {
 
       <section className={styles.signalPanel} aria-label="Why the first photo matters">
         <span>Why 5x happens</span>
-        <strong>Dating app results compound off the first photo.</strong>
+        <strong>
+          Dating app results <em>compound</em> off the first photo.
+        </strong>
         <p>
-          A better lead photo can earn more pauses, likes, and replies. Those signals
-          can push your profile further, which is why the gap between a good pic and
-          a great one can feel exponential.
+          <strong>A better lead photo can earn more pauses, likes, and replies.</strong>{" "}
+          Those signals can push your profile further, which is why a great pic
+          can <strong>get exponentially more matches</strong> than a good one.
         </p>
       </section>
 
