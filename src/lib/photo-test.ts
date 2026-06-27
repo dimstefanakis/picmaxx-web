@@ -11,7 +11,7 @@ export const photoTestPackages = {
     minPhotoCount: 1,
     maxPhotoCount: 1,
     stripeName: "Picmaxx Lead Photo Score",
-    airtableLabel: "Lead photo score",
+    airtableLabel: "Score one photo",
     eyebrow: "lead photo",
     promise: "Score your current dating app opener.",
     helper: "Best for testing the photo you lead with on Tinder, Hinge, or Bumble.",
