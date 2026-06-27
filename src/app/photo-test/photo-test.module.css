@@ -98,13 +98,13 @@
 }
 
 .title {
-  max-width: 10.8ch;
+  max-width: 12ch;
   margin: 0;
   font-family: var(--font-archivo-black), var(--font-manrope), sans-serif;
-  font-size: clamp(48px, 13vw, 96px);
+  font-size: clamp(44px, 11vw, 88px);
   font-weight: 900;
   line-height: 0.88;
-  letter-spacing: -1px;
+  letter-spacing: 0;
   text-transform: uppercase;
   transform: scaleX(0.96);
   transform-origin: left center;
@@ -125,18 +125,17 @@
 }
 
 .subcopy strong {
-  display: inline;
-  padding: 0 0.18em;
-  background: linear-gradient(180deg, transparent 52%, var(--acid) 52%);
+  background: linear-gradient(180deg, transparent 62%, var(--acid) 62%);
   color: var(--ink);
+  font-weight: 950;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
 
-.phonePreview {
+.comparisonPreview {
   position: relative;
   display: grid;
-  gap: 12px;
+  gap: 13px;
   width: min(100%, 440px);
   margin: 0 auto;
   padding: 13px;
@@ -146,87 +145,134 @@
   box-shadow: 10px 10px 0 var(--blue);
 }
 
-.previewBar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 36px;
-  padding: 0 2px;
-  font-size: 11px;
-  font-weight: 950;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.previewBar strong {
-  color: var(--acid);
-}
-
-.previewGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.32fr) minmax(88px, 0.68fr);
-  gap: 10px;
-  min-height: 314px;
-}
-
-.previewWinner,
-.previewStack div {
+.comparisonFrame {
   position: relative;
   overflow: hidden;
+  aspect-ratio: 4 / 5.2;
   border: 1px solid rgba(244, 239, 228, 0.28);
   background: #262622;
+  cursor: ew-resize;
+  isolation: isolate;
+  touch-action: pan-y;
+  user-select: none;
 }
 
-.previewWinner {
-  min-height: 314px;
+.comparisonFrame:active {
+  cursor: grabbing;
 }
 
-.previewWinner img,
-.previewStack img {
-  object-fit: cover;
-}
-
-.previewWinner::after,
-.previewStack div::after {
+.comparisonLayer {
   position: absolute;
-  inset: 58% 0 0;
+  inset: 0;
+}
+
+.comparisonLayer img {
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+
+.comparisonBefore {
+  z-index: 1;
+}
+
+.comparisonAfter {
+  z-index: 2;
+  clip-path: inset(0 0 0 var(--split));
+}
+
+.comparisonLayer::after {
+  position: absolute;
+  inset: 54% 0 0;
+  z-index: 1;
   background: linear-gradient(0deg, rgba(0, 0, 0, 0.72), transparent);
   content: "";
 }
 
-.previewWinner span,
-.previewStack span {
+.comparisonDivider {
   position: absolute;
-  left: 9px;
-  bottom: 9px;
-  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: var(--split);
+  z-index: 3;
+  width: 2px;
+  background: var(--acid);
+  box-shadow:
+    -1px 0 0 var(--ink),
+    1px 0 0 var(--ink);
+  pointer-events: none;
+}
+
+.comparisonDivider::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
-  padding: 0 9px;
-  border: 1px solid var(--paper);
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
   background: var(--acid);
   color: var(--ink);
-  font-size: 10px;
-  font-weight: 950;
+  box-shadow: 4px 4px 0 var(--ink);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.comparisonBadge {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  z-index: 4;
+  display: grid;
+  gap: 2px;
+  min-width: 132px;
+  padding: 13px 14px 12px;
+  border: 1px solid var(--ink);
+  border-radius: 18px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
   letter-spacing: 0;
+}
+
+.comparisonBadgeAfter {
+  right: 10px;
+  left: auto;
+  bottom: 20px;
+  top: auto;
+  background: var(--acid);
+}
+
+.comparisonBadge span {
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
   text-transform: uppercase;
 }
 
-.previewScore {
+.comparisonBadge strong {
+  font-family: var(--font-archivo-black), var(--font-manrope), sans-serif;
+  font-size: clamp(22px, 2.2vw, 32px);
+  font-weight: 900;
+  line-height: 0.94;
+  text-transform: uppercase;
+}
+
+.scoreBadge {
   position: absolute;
-  top: 9px;
-  right: 9px;
-  z-index: 2;
+  z-index: 4;
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
+  min-height: 28px;
   padding: 0 9px;
   border: 1px solid var(--ink);
+  border-radius: 999px;
   background: var(--white);
   color: var(--ink);
-  box-shadow: 3px 3px 0 var(--acid);
+  box-shadow: 3px 3px 0 var(--ink);
   font-family: var(--font-archivo-black), var(--font-manrope), sans-serif;
   font-size: 13px;
   line-height: 1;
@@ -234,26 +280,67 @@
   text-transform: uppercase;
 }
 
-.previewStack {
+.scoreBadgeBefore {
+  left: 18px;
+  bottom: 18px;
+}
+
+.scoreBadgeAfter {
+  right: 18px;
+  bottom: 18px;
+  background: var(--acid);
+}
+
+.liftBadge {
+  position: absolute;
+  right: -18px;
+  top: -22px;
+  z-index: 6;
   display: grid;
-  gap: 10px;
-}
-
-.previewNote {
-  margin: 0;
-  padding: 11px;
-  border: 1px solid rgba(244, 239, 228, 0.24);
-  background: rgba(244, 239, 228, 0.08);
-  color: rgba(244, 239, 228, 0.82);
-  font-size: 12px;
-  font-weight: 850;
-  line-height: 1.24;
+  gap: 2px;
+  min-width: 150px;
+  padding: 13px 16px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: var(--blush);
+  color: var(--ink);
+  box-shadow: 7px 7px 0 var(--ink);
   letter-spacing: 0;
+  transform: rotate(5deg);
 }
 
-.previewNote strong {
-  color: var(--acid);
+.liftBadge span {
+  font-family: var(--font-archivo-black), var(--font-manrope), sans-serif;
+  font-size: 24px;
+  line-height: 0.9;
+  text-transform: uppercase;
+}
+
+.liftBadge strong {
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.comparisonControl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 38px;
+  color: rgba(244, 239, 228, 0.86);
+  font-size: 10px;
   font-weight: 950;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  touch-action: pan-y;
+}
+
+.comparisonControl input {
+  width: 100%;
+  accent-color: var(--acid);
+  cursor: ew-resize;
 }
 
 .contextBand {
@@ -379,7 +466,7 @@
 }
 
 .formIntro h2 {
-  max-width: 9ch;
+  max-width: 12ch;
   margin: 0;
   font-family: var(--font-archivo-black), var(--font-manrope), sans-serif;
   font-size: clamp(42px, 12vw, 68px);
@@ -558,8 +645,9 @@
 
 .uploadGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
+  width: min(100%, 320px);
 }
 
 .photoSlot {
@@ -842,12 +930,56 @@
 }
 
 @media (max-width: 430px) {
-  .previewGrid {
-    min-height: 284px;
+  .comparisonBadge {
+    min-width: 112px;
+    padding: 11px 12px 10px;
+    border-radius: 15px;
+    box-shadow: 4px 4px 0 var(--ink);
   }
 
-  .previewWinner {
-    min-height: 284px;
+  .comparisonBadge {
+    top: 12px;
+    left: 12px;
+  }
+
+  .comparisonBadgeAfter {
+    right: 12px;
+    top: 74px;
+    bottom: auto;
+    left: auto;
+  }
+
+  .comparisonBadge strong {
+    font-size: 22px;
+  }
+
+  .scoreBadge {
+    min-height: 26px;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  .scoreBadgeBefore {
+    left: 12px;
+    bottom: 12px;
+  }
+
+  .scoreBadgeAfter {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .liftBadge {
+    top: -18px;
+    right: 10px;
+    bottom: auto;
+    min-width: 136px;
+    padding: 11px 14px;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+
+  .liftBadge span {
+    font-size: 20px;
   }
 
   .flow {
@@ -857,6 +989,7 @@
 
   .uploadGrid {
     gap: 8px;
+    width: min(100%, 280px);
   }
 
   .packageCard {

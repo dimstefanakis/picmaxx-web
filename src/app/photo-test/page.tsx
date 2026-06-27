@@ -1,7 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { ChangeEvent, FormEvent, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  ChangeEvent,
+  FormEvent,
+  type PointerEvent,
+  useMemo,
+  useState,
+} from "react";
 import posthog from "posthog-js";
 
 import {
@@ -38,8 +45,22 @@ type UploadResponse = {
   }[];
 };
 
-const packageIds: PhotoTestPackageId[] = ["best_of_three", "single"];
 const returnPath = "/photo-test";
+const adPackageId: PhotoTestPackageId = "single";
+const comparisonPhotos = {
+  before: {
+    src: "/demo-photos/picmaxx-before.webp",
+    label: "old lead",
+    matches: "8 matches",
+    score: "4.8/10",
+  },
+  after: {
+    src: "/demo-photos/picmaxx-after.webp",
+    label: "new lead",
+    matches: "41 matches",
+    score: "8.7/10",
+  },
+};
 
 function getCookie(name: string) {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
@@ -52,47 +73,61 @@ async function parseError(response: Response) {
 }
 
 export default function PhotoTestAdPage() {
-  const [packageId, setPackageId] = useState<PhotoTestPackageId>("best_of_three");
   const [voterAgeRange, setVoterAgeRange] = useState<VoterAgeRange>("25-34");
   const [email, setEmail] = useState("");
-  const [photos, setPhotos] = useState<(SelectedPhoto | null)[]>([null, null, null]);
+  const [photos, setPhotos] = useState<(SelectedPhoto | null)[]>([null]);
+  const [comparisonSplit, setComparisonSplit] = useState(58);
+  const [isDraggingComparison, setIsDraggingComparison] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const selectedPackage = photoTestPackages[packageId];
+  const selectedPackage = photoTestPackages[adPackageId];
   const maxPhotos = selectedPackage.maxPhotoCount;
   const visiblePhotos = photos.slice(0, maxPhotos);
   const readyCount = visiblePhotos.filter(Boolean).length;
   const selectedAgeRange =
     voterAgeRanges.find((range) => range.value === voterAgeRange) ?? voterAgeRanges[1];
+  const comparisonStyle = {
+    "--split": `${comparisonSplit}%`,
+  } as CSSProperties;
 
   const ctaLabel = useMemo(() => {
     if (isSubmitting) return status || "Preparing checkout";
-    if (packageId === "single") return "Get my score";
-    return "Find my best photo";
-  }, [isSubmitting, packageId, status]);
+    return "Show me what women pick";
+  }, [isSubmitting, status]);
 
-  function choosePackage(nextPackageId: PhotoTestPackageId) {
-    posthog.capture("package_selected", {
-      package_id: nextPackageId,
-      max_photos: photoTestPackages[nextPackageId].maxPhotoCount,
+  function chooseAgeRange(nextRange: VoterAgeRange) {
+    posthog.capture("audience_selected", {
+      package_id: adPackageId,
+      voter_age_range: nextRange,
       variant: "ad",
     });
-    setPackageId(nextPackageId);
-    const nextMaxPhotos = photoTestPackages[nextPackageId].maxPhotoCount;
-    setPhotos((current) => {
-      const next = [...current];
-      for (let index = nextMaxPhotos; index < next.length; index += 1) {
-        const photo = next[index];
-        if (photo) {
-          URL.revokeObjectURL(photo.previewUrl);
-          next[index] = null;
-        }
-      }
-      return next;
-    });
-    setError("");
+    setVoterAgeRange(nextRange);
+  }
+
+  function updateComparisonFromPointer(event: PointerEvent<HTMLDivElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const rawSplit = ((event.clientX - bounds.left) / bounds.width) * 100;
+    setComparisonSplit(Math.min(76, Math.max(24, Math.round(rawSplit))));
+  }
+
+  function startComparisonDrag(event: PointerEvent<HTMLDivElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setIsDraggingComparison(true);
+    updateComparisonFromPointer(event);
+  }
+
+  function moveComparisonDrag(event: PointerEvent<HTMLDivElement>) {
+    if (!isDraggingComparison) return;
+    updateComparisonFromPointer(event);
+  }
+
+  function stopComparisonDrag(event: PointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setIsDraggingComparison(false);
   }
 
   function replacePhoto(index: number, event: ChangeEvent<HTMLInputElement>) {
@@ -114,7 +149,7 @@ export default function PhotoTestAdPage() {
     setError("");
     posthog.capture("photo_upload_added", {
       photo_index: index,
-      package_id: packageId,
+      package_id: adPackageId,
       variant: "ad",
     });
     setPhotos((current) => {
@@ -143,8 +178,8 @@ export default function PhotoTestAdPage() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       return "Enter the email where you want results sent.";
     }
-    if (!isValidPhotoCount(packageId, readyCount)) {
-      return `Add ${photoCountLabel(packageId)}.`;
+    if (!isValidPhotoCount(adPackageId, readyCount)) {
+      return `Add ${photoCountLabel(adPackageId)}.`;
     }
     return "";
   }
@@ -169,7 +204,7 @@ export default function PhotoTestAdPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          packageId,
+          packageId: adPackageId,
           email,
           files: finalPhotos.map(({ file }) => ({
             name: file.name,
@@ -224,13 +259,13 @@ export default function PhotoTestAdPage() {
           value: 9,
           currency: "USD",
           content_name: selectedPackage.title,
-          content_type: packageId,
+          content_type: adPackageId,
         },
         { eventID: checkout.initiateCheckoutEventId },
       );
       posthog.identify(email, { email });
       posthog.capture("checkout_initiated", {
-        package_id: packageId,
+        package_id: adPackageId,
         voter_age_range: voterAgeRange,
         photo_count: finalPhotos.length,
         order_id: initData.orderId,
@@ -255,130 +290,142 @@ export default function PhotoTestAdPage() {
 
       <section className={styles.hero} aria-labelledby="photo-test-title">
         <div className={styles.heroCopy}>
-          <p className={styles.eyebrow}>Fix your Tinder, Hinge, and Bumble algo</p>
+          <p className={styles.eyebrow}>Guys pick the wrong pics</p>
           <h1 id="photo-test-title" className={styles.title}>
-            Find the photo that gets{" "}
-            <span className={styles.titleAccent}>5x more matches.</span>
+            Find the photo that gets <span className={styles.titleAccent}>5x more matches</span> on Tinder.
           </h1>
           <p className={styles.subcopy}>
-            <strong>One photo can change how the whole profile performs.</strong>{" "}
-            Upload your best pics and women in your dating range pick the one
-            most likely to make the algorithm notice.
+            <strong>Most guys pick the photo they like.</strong> Women pick the
+            one they would swipe on. <strong>Test yours before you waste more matches.</strong>
           </p>
         </div>
 
-        <div className={styles.phonePreview} aria-label="Example result preview">
-          <div className={styles.previewBar}>
-            <span>sample report</span>
-            <strong>score + rank</strong>
-          </div>
-          <div className={styles.previewGrid}>
-            <div className={styles.previewWinner}>
+        <div className={styles.comparisonPreview} aria-label="Before and after example">
+          <div
+            className={styles.comparisonFrame}
+            style={comparisonStyle}
+            role="presentation"
+            onPointerDown={startComparisonDrag}
+            onPointerMove={moveComparisonDrag}
+            onPointerUp={stopComparisonDrag}
+            onPointerCancel={stopComparisonDrag}
+          >
+            <div className={`${styles.comparisonLayer} ${styles.comparisonBefore}`}>
               <Image
-                src="/demo-photos/ad-formal-profile.jpeg"
-                alt="Example first ranked dating photo"
+                src={comparisonPhotos.before.src}
+                alt="Example old lead dating photo"
                 fill
                 priority
-                sizes="(max-width: 720px) 54vw, 280px"
+                sizes="(max-width: 720px) 86vw, 440px"
               />
-              <span>winner</span>
-              <strong className={styles.previewScore}>8.8/10</strong>
-            </div>
-            <div className={styles.previewStack}>
-              <div>
-                <Image
-                  src="/demo-photos/picmaxx-after.webp"
-                  alt="Example second ranked dating photo"
-                  fill
-                  sizes="(max-width: 720px) 26vw, 120px"
-                />
-                <span>#2</span>
-                <strong className={styles.previewScore}>7.4/10</strong>
+              <div className={styles.comparisonBadge}>
+                <span>{comparisonPhotos.before.label}</span>
+                <strong>{comparisonPhotos.before.matches}</strong>
               </div>
-              <div>
-                <Image
-                  src="/demo-photos/picmaxx-before.webp"
-                  alt="Example third ranked dating photo"
-                  fill
-                  sizes="(max-width: 720px) 26vw, 120px"
-                />
-                <span>#3</span>
-                <strong className={styles.previewScore}>6.1/10</strong>
-              </div>
+              <span className={`${styles.scoreBadge} ${styles.scoreBadgeBefore}`}>
+                {comparisonPhotos.before.score}
+              </span>
             </div>
+            <div className={`${styles.comparisonLayer} ${styles.comparisonAfter}`}>
+              <Image
+                src={comparisonPhotos.after.src}
+                alt="Example new lead dating photo"
+                fill
+                priority
+                sizes="(max-width: 720px) 86vw, 440px"
+              />
+              <div className={`${styles.comparisonBadge} ${styles.comparisonBadgeAfter}`}>
+                <span>{comparisonPhotos.after.label}</span>
+                <strong>{comparisonPhotos.after.matches}</strong>
+              </div>
+              <span className={`${styles.scoreBadge} ${styles.scoreBadgeAfter}`}>
+                {comparisonPhotos.after.score}
+              </span>
+            </div>
+            <div className={styles.comparisonDivider} aria-hidden="true" />
           </div>
-          <p className={styles.previewNote}>
-            Result: lead with the photo that creates the{" "}
-            <strong>strongest first impression</strong>. Score shows the swipe
-            signal behind each shot.
-          </p>
+          <div className={styles.liftBadge}>
+            <span>5.1x lift</span>
+            <strong>better opener</strong>
+          </div>
+          <label className={styles.comparisonControl}>
+            <span>before</span>
+            <input
+              type="range"
+              min="24"
+              max="76"
+              value={comparisonSplit}
+              onChange={(event) => setComparisonSplit(Number(event.currentTarget.value))}
+              aria-label="Reveal the before and after example"
+            />
+            <span>after</span>
+          </label>
         </div>
       </section>
 
       <section className={styles.contextBand} aria-label="How Picmaxx works">
         <div className={styles.contextItem}>
           <span>01</span>
-          <strong>Drop your contenders</strong>
-          <p>Choose the photos you think might work on Hinge, Tinder, or Bumble.</p>
+          <strong>Send the pic you use now</strong>
+          <p>Use the photo sitting first on Tinder, Hinge, or Bumble right now.</p>
         </div>
         <div className={styles.contextItem}>
           <span>02</span>
-          <strong>Women vote privately</strong>
-          <p>Reviewers pick the one they would be most likely to swipe on.</p>
+          <strong>Women rank the swipe</strong>
+          <p>They judge it like a swipe, not like a photoshoot.</p>
         </div>
         <div className={styles.contextItem}>
           <span>03</span>
           <strong>Lead with the winner</strong>
-          <p>Put the strongest photo first and stop wasting matches on the wrong opener.</p>
+          <p>Get the score, notes, and AI edit built from what they said.</p>
         </div>
       </section>
 
       <section className={styles.signalPanel} aria-label="Why the first photo matters">
-        <span>Why 5x happens</span>
+        <span>The fact</span>
         <strong>
-          Dating app results <em>compound</em> off the first photo.
+          You cannot swipe on <em>yourself.</em>
         </strong>
         <p>
-          <strong>A better lead photo can earn more pauses, likes, and replies.</strong>{" "}
-          Those signals can push your profile further, which is why a great pic
-          can <strong>get exponentially more matches</strong> than a good one.
+          <strong>Keeping the same pic feels easy, but it is still a guess.</strong>{" "}
+          A quick test tells you if it works, what hurts, and what to lead with next.
         </p>
       </section>
 
       <form className={styles.flow} onSubmit={submit}>
         <section className={styles.formIntro} aria-labelledby="checkout-title">
-          <p className={styles.eyebrow}>Upload photos</p>
-          <h2 id="checkout-title">Start here.</h2>
+          <p className={styles.eyebrow}>Test the first pic</p>
+          <h2 id="checkout-title">Start small.</h2>
           <p>
-            Choose a package, add photos, then checkout securely.
+            Add the photo already leading your profile. We ask real women, then send
+            the plain answer.
           </p>
         </section>
 
-        <section className={styles.section} aria-labelledby="package-title">
+        <section className={styles.section} aria-labelledby="upload-title">
           <div className={styles.sectionHead}>
             <span>01</span>
-            <h2 id="package-title">Pick your test</h2>
+            <h2 id="upload-title">Add your lead photo</h2>
           </div>
-          <div className={styles.packageGrid}>
-            {packageIds.map((id) => {
-              const item = photoTestPackages[id];
-              const selected = id === packageId;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={selected}
-                  className={`${styles.packageCard} ${selected ? styles.packageCardSelected : ""}`}
-                  onClick={() => choosePackage(id)}
-                >
-                  <span className={styles.packageEyebrow}>{item.eyebrow}</span>
-                  <strong>{item.title}</strong>
-                  <span>{item.promise}</span>
-                </button>
-              );
-            })}
+          <div className={styles.uploadGrid}>
+            {Array.from({ length: maxPhotos }).map((_, index) => (
+              <PhotoSlot
+                key={`lead-${index}`}
+                index={index}
+                photo={photos[index]}
+                onClick={() =>
+                  posthog.capture("lead_photo_upload_clicked", {
+                    photo_index: index,
+                    package_id: adPackageId,
+                    variant: "ad",
+                  })
+                }
+                onChange={(event) => replacePhoto(index, event)}
+                onRemove={() => removePhoto(index)}
+              />
+            ))}
           </div>
-          <p className={styles.helper}>{selectedPackage.helper}</p>
+          <p className={styles.helper}>Use the photo that shows first today.</p>
         </section>
 
         <section className={styles.section} aria-labelledby="age-title">
@@ -395,7 +442,7 @@ export default function PhotoTestAdPage() {
                   type="button"
                   aria-pressed={selected}
                   className={`${styles.ageChip} ${selected ? styles.ageChipSelected : ""}`}
-                  onClick={() => setVoterAgeRange(range.value)}
+                  onClick={() => chooseAgeRange(range.value)}
                 >
                   <strong>{range.label}</strong>
                   <span>{range.helper}</span>
@@ -403,30 +450,12 @@ export default function PhotoTestAdPage() {
               );
             })}
           </div>
-          <p className={styles.helper}>Choose who should judge the first impression.</p>
-        </section>
-
-        <section className={styles.section} aria-labelledby="upload-title">
-          <div className={styles.sectionHead}>
-            <span>03</span>
-            <h2 id="upload-title">Add photos</h2>
-          </div>
-          <div className={styles.uploadGrid}>
-            {Array.from({ length: maxPhotos }).map((_, index) => (
-              <PhotoSlot
-                key={`${packageId}-${index}`}
-                index={index}
-                photo={photos[index]}
-                onChange={(event) => replacePhoto(index, event)}
-                onRemove={() => removePhoto(index)}
-              />
-            ))}
-          </div>
+          <p className={styles.helper}>Pick the women whose swipe you care about.</p>
         </section>
 
         <section className={styles.section} aria-labelledby="email-title">
           <div className={styles.sectionHead}>
-            <span>04</span>
+            <span>03</span>
             <h2 id="email-title">Results email</h2>
           </div>
           <input
@@ -442,7 +471,7 @@ export default function PhotoTestAdPage() {
 
         <div className={styles.summary}>
           <span>
-            {readyCount}/{maxPhotos} photos ready - voters {selectedAgeRange.label}
+            {readyCount}/{maxPhotos} lead photo ready - voters {selectedAgeRange.label}
           </span>
           <strong>{selectedPackage.resultCopy}</strong>
         </div>
@@ -468,11 +497,13 @@ export default function PhotoTestAdPage() {
 function PhotoSlot({
   index,
   photo,
+  onClick,
   onChange,
   onRemove,
 }: {
   index: number;
   photo: SelectedPhoto | null;
+  onClick: () => void;
   onChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onRemove: () => void;
 }) {
@@ -491,7 +522,7 @@ function PhotoSlot({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={photo.previewUrl} alt="" />
           <div className={styles.photoMeta}>
-            <span>Photo {index + 1}</span>
+            <span>Lead photo</span>
             <strong>{photo.file.name}</strong>
           </div>
           <button type="button" onClick={onRemove}>
@@ -499,10 +530,10 @@ function PhotoSlot({
           </button>
         </>
       ) : (
-        <label htmlFor={inputId}>
+        <label htmlFor={inputId} onClick={onClick}>
           <span>+</span>
-          <strong>Photo {index + 1}</strong>
-          <em>tap to upload</em>
+          <strong>Lead photo</strong>
+          <em>tap to upload your opener</em>
         </label>
       )}
     </div>
