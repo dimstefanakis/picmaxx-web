@@ -1,6 +1,6 @@
 export const PHOTO_TEST_PRICE_CENTS = 900;
 export const PHOTO_TEST_CURRENCY = "usd";
-export const MAX_PHOTO_BYTES = 12 * 1024 * 1024;
+export const MAX_PHOTO_BYTES = 30 * 1024 * 1024;
 
 export const photoTestPackages = {
   single: {
@@ -141,7 +141,7 @@ export function validatePhotoMeta(file: PhotoUploadMeta) {
   }
 
   if (file.size > MAX_PHOTO_BYTES) {
-    return { ok: false as const, error: "Each photo must be 12 MB or smaller." };
+    return { ok: false as const, error: "Each photo must be 30 MB or smaller." };
   }
 
   return { ok: true as const, contentType };

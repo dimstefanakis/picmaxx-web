@@ -86,8 +86,6 @@ export default function PhotoTestAdPage() {
   const maxPhotos = selectedPackage.maxPhotoCount;
   const visiblePhotos = photos.slice(0, maxPhotos);
   const readyCount = visiblePhotos.filter(Boolean).length;
-  const selectedAgeRange =
-    voterAgeRanges.find((range) => range.value === voterAgeRange) ?? voterAgeRanges[1];
   const comparisonStyle = {
     "--split": `${comparisonSplit}%`,
   } as CSSProperties;
@@ -468,13 +466,6 @@ export default function PhotoTestAdPage() {
             onChange={(event) => setEmail(event.target.value)}
           />
         </section>
-
-        <div className={styles.summary}>
-          <span>
-            {readyCount}/{maxPhotos} lead photo ready - voters {selectedAgeRange.label}
-          </span>
-          <strong>{selectedPackage.resultCopy}</strong>
-        </div>
 
         {error ? (
           <p className={styles.error} role="alert">

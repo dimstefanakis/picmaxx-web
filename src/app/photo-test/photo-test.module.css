@@ -796,26 +796,6 @@
   background: white;
 }
 
-.summary {
-  display: grid;
-  gap: 4px;
-  padding: 14px;
-  border: 1px solid var(--ink);
-  background: var(--blue);
-  box-shadow: 5px 5px 0 var(--ink);
-}
-
-.summary span {
-  font-size: 11px;
-  font-weight: 950;
-  text-transform: uppercase;
-}
-
-.summary strong {
-  font-size: 14px;
-  line-height: 1.15;
-}
-
 .error {
   margin: 0;
   padding: 12px 14px;
