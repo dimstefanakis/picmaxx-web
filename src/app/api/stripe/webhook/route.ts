@@ -52,17 +52,18 @@ export async function POST(request: Request) {
   }
 
   const paidAt = new Date().toISOString();
+  const purchaseEmail =
+    fieldString(session.customer_details?.email) ||
+    fieldString(session.customer_email) ||
+    fieldString(session.metadata?.email);
   await updatePaidTestRecord(airtableRecordId, {
     Status: "paid",
     "Payment Status": session.payment_status ?? "paid",
     "Stripe Session ID": session.id,
     "Paid At": paidAt,
+    ...(purchaseEmail ? { Email: purchaseEmail } : {}),
   });
 
-  const purchaseEmail =
-    fieldString(session.customer_details?.email) ||
-    fieldString(session.customer_email) ||
-    fieldString(session.metadata?.email);
   getPostHogClient().capture({
     distinctId: purchaseEmail || orderId,
     event: "photo_test_purchase_confirmed",
@@ -75,10 +76,7 @@ export async function POST(request: Request) {
     },
   });
 
-  const email =
-    fieldString(session.customer_details?.email) ||
-    fieldString(session.customer_email) ||
-    fieldString(session.metadata?.email);
+  const email = purchaseEmail;
   if (email) {
     try {
       const metaResponse = await sendMetaPurchaseEvent({

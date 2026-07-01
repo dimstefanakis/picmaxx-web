@@ -4,9 +4,8 @@ import Image from "next/image";
 import {
   type CSSProperties,
   ChangeEvent,
-  FormEvent,
+  type MouseEvent,
   type PointerEvent,
-  useMemo,
   useState,
 } from "react";
 import posthog from "posthog-js";
@@ -45,8 +44,17 @@ type UploadResponse = {
   }[];
 };
 
+type StepId = "intro" | "how" | "upload" | "range";
+
 const returnPath = "/photo-test";
 const adPackageId: PhotoTestPackageId = "single";
+const stepOrder: StepId[] = ["intro", "how", "upload", "range"];
+const nextLabelByStep: Record<StepId, string> = {
+  intro: "Start photo test",
+  how: "Next",
+  upload: "Next",
+  range: "Next",
+};
 const comparisonPhotos = {
   before: {
     src: "/demo-photos/picmaxx-before.webp",
@@ -73,12 +81,11 @@ async function parseError(response: Response) {
 }
 
 export default function PhotoTestAdPage() {
+  const [activeStep, setActiveStep] = useState<StepId>("intro");
   const [voterAgeRange, setVoterAgeRange] = useState<VoterAgeRange>("25-34");
-  const [email, setEmail] = useState("");
   const [photos, setPhotos] = useState<(SelectedPhoto | null)[]>([null]);
   const [comparisonSplit, setComparisonSplit] = useState(58);
   const [isDraggingComparison, setIsDraggingComparison] = useState(false);
-  const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -90,10 +97,9 @@ export default function PhotoTestAdPage() {
     "--split": `${comparisonSplit}%`,
   } as CSSProperties;
 
-  const ctaLabel = useMemo(() => {
-    if (isSubmitting) return status || "Preparing checkout";
-    return "Show me what women pick";
-  }, [isSubmitting, status]);
+  const activeStepIndex = stepOrder.indexOf(activeStep);
+  const isFirstStep = activeStepIndex === 0;
+  const isFinalStep = activeStep === "range";
 
   function chooseAgeRange(nextRange: VoterAgeRange) {
     posthog.capture("audience_selected", {
@@ -172,18 +178,34 @@ export default function PhotoTestAdPage() {
     });
   }
 
-  function validateForm() {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return "Enter the email where you want results sent.";
+  function goBack(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    if (isFirstStep) return;
+    setError("");
+    setActiveStep(stepOrder[activeStepIndex - 1]);
+  }
+
+  function goNext(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    if (activeStep === "upload" && !isValidPhotoCount(adPackageId, readyCount)) {
+      setError(`Add ${photoCountLabel(adPackageId)}.`);
+      return;
     }
+
+    const nextStep = stepOrder[activeStepIndex + 1];
+    if (!nextStep) return;
+    setError("");
+    setActiveStep(nextStep);
+  }
+
+  function validateForm() {
     if (!isValidPhotoCount(adPackageId, readyCount)) {
       return `Add ${photoCountLabel(adPackageId)}.`;
     }
     return "";
   }
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function startCheckout() {
     const validationError = validateForm();
     if (validationError) {
       setError(validationError);
@@ -195,7 +217,6 @@ export default function PhotoTestAdPage() {
     setIsSubmitting(true);
 
     try {
-      setStatus("Creating test");
       const initResponse = await fetch("/api/photo-tests/init", {
         method: "POST",
         headers: {
@@ -203,7 +224,6 @@ export default function PhotoTestAdPage() {
         },
         body: JSON.stringify({
           packageId: adPackageId,
-          email,
           files: finalPhotos.map(({ file }) => ({
             name: file.name,
             type: inferImageType(file.name, file.type),
@@ -221,7 +241,6 @@ export default function PhotoTestAdPage() {
       if (!initResponse.ok) throw new Error(await parseError(initResponse));
       const initData = (await initResponse.json()) as UploadResponse;
 
-      setStatus("Uploading photos");
       await Promise.all(
         finalPhotos.map(({ file }, index) =>
           fetch(initData.uploads[index].uploadUrl, {
@@ -234,7 +253,6 @@ export default function PhotoTestAdPage() {
         ),
       );
 
-      setStatus("Opening checkout");
       const checkoutResponse = await fetch("/api/photo-tests/checkout", {
         method: "POST",
         headers: {
@@ -261,7 +279,6 @@ export default function PhotoTestAdPage() {
         },
         { eventID: checkout.initiateCheckoutEventId },
       );
-      posthog.identify(email, { email });
       posthog.capture("checkout_initiated", {
         package_id: adPackageId,
         voter_age_range: voterAgeRange,
@@ -272,138 +289,145 @@ export default function PhotoTestAdPage() {
       window.location.href = checkout.checkoutUrl;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong. Try again.");
-      setStatus("");
       setIsSubmitting(false);
     }
   }
 
-  return (
-    <main className={styles.page}>
-      <header className={styles.topbar} aria-label="Picmaxx photo test">
-        <div className={styles.brand} aria-label="Picmaxx">
-          <span className={styles.brandMark}>picmaxx</span>
-          <span className={styles.brandDot} aria-hidden="true" />
-        </div>
-      </header>
+  function renderComparison() {
+    const priority = activeStep === "intro";
 
-      <section className={styles.hero} aria-labelledby="photo-test-title">
-        <div className={styles.heroCopy}>
-          <p className={styles.eyebrow}>Guys pick the wrong pics</p>
-          <h1 id="photo-test-title" className={styles.title}>
-            Find the photo that gets <span className={styles.titleAccent}>5x more matches</span> on Tinder.
-          </h1>
-          <p className={styles.subcopy}>
-            <strong>Most guys pick the photo they like.</strong> Women pick the
-            one they would swipe on. <strong>Test yours before you waste more matches.</strong>
-          </p>
-        </div>
-
-        <div className={styles.comparisonPreview} aria-label="Before and after example">
-          <div
-            className={styles.comparisonFrame}
-            style={comparisonStyle}
-            role="presentation"
-            onPointerDown={startComparisonDrag}
-            onPointerMove={moveComparisonDrag}
-            onPointerUp={stopComparisonDrag}
-            onPointerCancel={stopComparisonDrag}
-          >
-            <div className={`${styles.comparisonLayer} ${styles.comparisonBefore}`}>
-              <Image
-                src={comparisonPhotos.before.src}
-                alt="Example old lead dating photo"
-                fill
-                priority
-                sizes="(max-width: 720px) 86vw, 440px"
-              />
-              <div className={styles.comparisonBadge}>
-                <span>{comparisonPhotos.before.label}</span>
-                <strong>{comparisonPhotos.before.matches}</strong>
-              </div>
-              <span className={`${styles.scoreBadge} ${styles.scoreBadgeBefore}`}>
-                {comparisonPhotos.before.score}
-              </span>
-            </div>
-            <div className={`${styles.comparisonLayer} ${styles.comparisonAfter}`}>
-              <Image
-                src={comparisonPhotos.after.src}
-                alt="Example new lead dating photo"
-                fill
-                priority
-                sizes="(max-width: 720px) 86vw, 440px"
-              />
-              <div className={`${styles.comparisonBadge} ${styles.comparisonBadgeAfter}`}>
-                <span>{comparisonPhotos.after.label}</span>
-                <strong>{comparisonPhotos.after.matches}</strong>
-              </div>
-              <span className={`${styles.scoreBadge} ${styles.scoreBadgeAfter}`}>
-                {comparisonPhotos.after.score}
-              </span>
-            </div>
-            <div className={styles.comparisonDivider} aria-hidden="true" />
-          </div>
-          <div className={styles.liftBadge}>
-            <span>5.1x lift</span>
-            <strong>better opener</strong>
-          </div>
-          <label className={styles.comparisonControl}>
-            <span>before</span>
-            <input
-              type="range"
-              min="24"
-              max="76"
-              value={comparisonSplit}
-              onChange={(event) => setComparisonSplit(Number(event.currentTarget.value))}
-              aria-label="Reveal the before and after example"
+    return (
+      <div className={styles.comparisonPreview}>
+        <div
+          className={styles.comparisonFrame}
+          style={comparisonStyle}
+          role="presentation"
+          onPointerDown={startComparisonDrag}
+          onPointerMove={moveComparisonDrag}
+          onPointerUp={stopComparisonDrag}
+          onPointerCancel={stopComparisonDrag}
+        >
+          <div className={`${styles.comparisonLayer} ${styles.comparisonBefore}`}>
+            <Image
+              src={comparisonPhotos.before.src}
+              alt="Example old lead dating photo"
+              fill
+              priority={priority}
+              sizes="(max-width: 720px) 78vw, 360px"
             />
-            <span>after</span>
-          </label>
+            <div className={styles.comparisonBadge}>
+              <span>{comparisonPhotos.before.label}</span>
+              <strong>{comparisonPhotos.before.matches}</strong>
+            </div>
+            <span className={`${styles.scoreBadge} ${styles.scoreBadgeBefore}`}>
+              {comparisonPhotos.before.score}
+            </span>
+          </div>
+          <div className={`${styles.comparisonLayer} ${styles.comparisonAfter}`}>
+            <Image
+              src={comparisonPhotos.after.src}
+              alt="Example new lead dating photo"
+              fill
+              priority={priority}
+              sizes="(max-width: 720px) 78vw, 360px"
+            />
+            <div className={`${styles.comparisonBadge} ${styles.comparisonBadgeAfter}`}>
+              <span>{comparisonPhotos.after.label}</span>
+              <strong>{comparisonPhotos.after.matches}</strong>
+            </div>
+            <span className={`${styles.scoreBadge} ${styles.scoreBadgeAfter}`}>
+              {comparisonPhotos.after.score}
+            </span>
+          </div>
+          <div className={styles.comparisonDivider} aria-hidden="true" />
         </div>
-      </section>
+        <div className={styles.liftBadge}>
+          <span>5.1x lift</span>
+          <strong>better opener</strong>
+        </div>
+        <label className={styles.comparisonControl}>
+          <span>before</span>
+          <input
+            type="range"
+            min="24"
+            max="76"
+            value={comparisonSplit}
+            onChange={(event) => setComparisonSplit(Number(event.currentTarget.value))}
+            aria-label="Reveal the before and after example"
+          />
+          <span>after</span>
+        </label>
+      </div>
+    );
+  }
 
-      <section className={styles.contextBand} aria-label="How Picmaxx works">
-        <div className={styles.contextItem}>
-          <span>01</span>
-          <strong>Send the pic you use now</strong>
-          <p>Use the photo sitting first on Tinder, Hinge, or Bumble right now.</p>
-        </div>
-        <div className={styles.contextItem}>
-          <span>02</span>
-          <strong>Women rank the swipe</strong>
-          <p>They judge it like a swipe, not like a photoshoot.</p>
-        </div>
-        <div className={styles.contextItem}>
-          <span>03</span>
-          <strong>Lead with the winner</strong>
-          <p>Get the score, notes, and AI edit built from what they said.</p>
-        </div>
-      </section>
-
-      <section className={styles.signalPanel} aria-label="Why the first photo matters">
-        <span>The fact</span>
-        <strong>
-          You cannot swipe on <em>yourself.</em>
-        </strong>
-        <p>
-          <strong>Keeping the same pic feels easy, but it is still a guess.</strong>{" "}
-          A quick test tells you if it works, what hurts, and what to lead with next.
-        </p>
-      </section>
-
-      <form className={styles.flow} onSubmit={submit}>
-        <section className={styles.formIntro} aria-labelledby="checkout-title">
-          <p className={styles.eyebrow}>Test the first pic</p>
-          <h2 id="checkout-title">Start small.</h2>
-          <p>
-            Add the photo already leading your profile. We ask real women, then send
-            the plain answer.
-          </p>
+  function renderStep() {
+    if (activeStep === "intro") {
+      return (
+        <section className={`${styles.stepPanel} ${styles.stepPanelIntro}`} aria-labelledby="photo-test-title">
+          <div className={styles.stepCopyBlock}>
+            <h1 id="photo-test-title" className={styles.title}>
+              Find the photo that gets{" "}
+              <span className={styles.titleAccent}>5x more matches</span> on Tinder.
+            </h1>
+            <p className={styles.subcopy}>
+              <strong>Most guys pick the photo they like.</strong> Women pick the
+              one they would swipe on. <strong>Test yours before you waste more matches.</strong>
+            </p>
+          </div>
+          {renderComparison()}
         </section>
+      );
+    }
 
-        <section className={styles.section} aria-labelledby="upload-title">
-          <div className={styles.sectionHead}>
-            <span>01</span>
-            <h2 id="upload-title">Add your lead photo</h2>
+    if (activeStep === "how") {
+      return (
+        <section className={styles.stepPanel} aria-labelledby="how-title">
+          <div className={styles.stepCopyBlock}>
+            <h2 id="how-title" className={styles.stepTitle}>
+              How it works
+            </h2>
+          </div>
+          <div className={styles.signalPanel} aria-labelledby="fact-title">
+            <span>The fact</span>
+            <strong id="fact-title">
+              You cannot swipe on <em>yourself.</em>
+            </strong>
+            <p>
+              <strong>Keeping the same pic feels easy, but it is still a guess.</strong>{" "}
+              A quick test tells you if it works, what hurts, and what to lead with next.
+            </p>
+          </div>
+          <h3 className={styles.fixTitle}>The fix</h3>
+          <div className={styles.stepCards}>
+            <div className={styles.contextItem}>
+              <span>01</span>
+              <strong>Send the pic you use now</strong>
+              <p>Use the photo sitting first on Tinder, Hinge, or Bumble right now.</p>
+            </div>
+            <div className={styles.contextItem}>
+              <span>02</span>
+              <strong>Women rank the swipe</strong>
+              <p>They judge it like a swipe, not like a photoshoot.</p>
+            </div>
+            <div className={styles.contextItem}>
+              <span>03</span>
+              <strong>Lead with the winner</strong>
+              <p>Get the score, notes, and AI edit built from what they said.</p>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (activeStep === "upload") {
+      return (
+        <section className={styles.stepPanel} aria-labelledby="upload-title">
+          <div className={styles.stepCopyBlock}>
+            <h2 id="upload-title" className={styles.stepTitle}>
+              Add your lead photo.
+            </h2>
+            <p className={styles.stepText}>Use the photo that shows first today.</p>
           </div>
           <div className={styles.uploadGrid}>
             {Array.from({ length: maxPhotos }).map((_, index) => (
@@ -423,13 +447,18 @@ export default function PhotoTestAdPage() {
               />
             ))}
           </div>
-          <p className={styles.helper}>Use the photo that shows first today.</p>
         </section>
+      );
+    }
 
-        <section className={styles.section} aria-labelledby="age-title">
-          <div className={styles.sectionHead}>
-            <span>02</span>
-            <h2 id="age-title">Dating range</h2>
+    if (activeStep === "range") {
+      return (
+        <section className={styles.stepPanel} aria-labelledby="age-title">
+          <div className={styles.stepCopyBlock}>
+            <h2 id="age-title" className={styles.stepTitle}>
+              Who should judge it?
+            </h2>
+            <p className={styles.stepText}>Pick the women whose swipe you care about.</p>
           </div>
           <div className={styles.ageGrid} role="group" aria-label="Preferred voter age range">
             {voterAgeRanges.map((range) => {
@@ -448,39 +477,72 @@ export default function PhotoTestAdPage() {
               );
             })}
           </div>
-          <p className={styles.helper}>Pick the women whose swipe you care about.</p>
         </section>
+      );
+    }
 
-        <section className={styles.section} aria-labelledby="email-title">
-          <div className={styles.sectionHead}>
-            <span>03</span>
-            <h2 id="email-title">Results email</h2>
-          </div>
-          <input
-            className={styles.emailInput}
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            placeholder="email for results"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </section>
+    return null;
+  }
 
-        {error ? (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        <div className={styles.stickyCta}>
-          <button className={styles.checkoutButton} type="submit" disabled={isSubmitting}>
-            <span>{ctaLabel}</span>
-            <strong>$9</strong>
-          </button>
-          <p>Secure checkout by Stripe.</p>
+  return (
+    <main className={styles.page}>
+      <header className={styles.topbar} aria-label="Picmaxx photo test">
+        <div className={styles.brand} aria-label="Picmaxx">
+          <span className={styles.brandMark}>picmaxx</span>
+          <span className={styles.brandDot} aria-hidden="true" />
         </div>
-      </form>
+      </header>
+
+      <div className={styles.stepForm}>
+        <div className={styles.stepViewport}>{renderStep()}</div>
+
+        <div className={styles.stepActions}>
+          {error ? (
+            <p className={styles.error} role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          <div className={styles.stepButtonRow}>
+            {!isFirstStep ? (
+              <button
+                key="back"
+                className={`${styles.navButton} ${styles.navButtonSecondary}`}
+                type="button"
+                onClick={goBack}
+              >
+                Back
+              </button>
+            ) : null}
+
+            {isFinalStep ? (
+              <button
+                key="checkout"
+                className={styles.checkoutButton}
+                type="button"
+                disabled={isSubmitting}
+                aria-busy={isSubmitting}
+                onClick={startCheckout}
+              >
+                <span className={styles.checkoutButtonText}>
+                  {isSubmitting ? <span className={styles.buttonSpinner} aria-hidden="true" /> : null}
+                  <span>Get my rating</span>
+                </span>
+                <strong>$9</strong>
+              </button>
+            ) : (
+              <button
+                key={`next-${activeStep}`}
+                className={styles.navButton}
+                type="button"
+                onClick={goNext}
+              >
+                {nextLabelByStep[activeStep]}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </main>
   );
 }

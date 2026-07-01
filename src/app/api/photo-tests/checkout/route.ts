@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     const cancelPath = order.returnPath ?? "/test";
     const session = await stripeClient().checkout.sessions.create({
       mode: "payment",
-      customer_email: order.email,
+      ...(order.email ? { customer_email: order.email } : {}),
       submit_type: "pay",
       line_items: [
         {
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     }).catch((error) => console.error(error));
 
     getPostHogClient().capture({
-      distinctId: order.email,
+      distinctId: order.email || order.orderId,
       event: "photo_test_checkout_started",
       properties: {
         order_id: order.orderId,

@@ -63,8 +63,12 @@ export async function POST(request: Request) {
       return jsonError("Choose a valid package.");
     }
 
+    const returnPath = checkoutReturnPath(body.returnPath);
     const email = normalizeEmail(body.email);
-    if (!isValidEmail(email)) {
+    if (!email && returnPath !== "/photo-test") {
+      return jsonError("Enter a valid email.");
+    }
+    if (email && !isValidEmail(email)) {
       return jsonError("Enter a valid email.");
     }
 
@@ -111,10 +115,8 @@ export async function POST(request: Request) {
     const fbc = String(body.fbc ?? "");
     const userAgent = request.headers.get("user-agent") ?? "";
     const ipAddress = clientIp(request.headers);
-    const returnPath = checkoutReturnPath(body.returnPath);
-    const record = await createPaidTestRecord({
+    const recordFields = {
       "Order ID": id,
-      Email: email,
       Package: config.airtableLabel,
       "Package ID": config.id,
       "Voter Age Range": body.voterAgeRange,
@@ -129,7 +131,9 @@ export async function POST(request: Request) {
       FBC: fbc,
       "Created At": now,
       "Results Status": "not_started",
-    });
+      ...(email ? { Email: email } : {}),
+    };
+    const record = await createPaidTestRecord(recordFields);
 
     const orderToken = createPhotoTestOrderToken({
       orderId: id,
@@ -148,7 +152,7 @@ export async function POST(request: Request) {
     });
 
     getPostHogClient().capture({
-      distinctId: email,
+      distinctId: email || id,
       event: "photo_test_order_created",
       properties: {
         order_id: id,
