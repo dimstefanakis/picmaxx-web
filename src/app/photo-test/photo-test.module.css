@@ -8,6 +8,7 @@
   --blush: #ff7f6e;
   --blue: #6ec6ff;
   --white: #fffaf0;
+  --phone-width: 100%;
 
   min-height: 100vh;
   overflow-x: clip;
@@ -831,23 +832,53 @@
 }
 
 @media (min-width: 760px) {
+  .page {
+    --phone-width: min(100vw, 430px, 56.25svh);
+  }
+
+  .topbar,
   .stepForm {
-    --screen-x: clamp(22px, 4vw, 42px);
+    width: var(--phone-width);
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .stepForm {
+    --screen-x: clamp(16px, 5vw, 22px);
     --screen-top: 22px;
     --screen-bottom: max(154px, calc(134px + env(safe-area-inset-bottom)));
   }
 
+  .title {
+    font-size: 48px;
+  }
+
+  .stepTitle {
+    font-size: 52px;
+  }
+
+  .subcopy {
+    font-size: 20px;
+  }
+
+  .stepActions {
+    right: auto;
+    left: 50%;
+    width: var(--phone-width);
+    transform: translateX(-50%);
+  }
+
   .stepCards {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .contextItem {
-    grid-template-columns: 1fr;
-    min-height: 166px;
+    grid-template-columns: 40px 1fr;
+    min-height: auto;
   }
 
   .contextItem span {
-    grid-row: auto;
+    grid-row: span 2;
   }
 
   .stepPanelIntro .comparisonPreview {
