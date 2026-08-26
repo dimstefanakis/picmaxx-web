@@ -12,6 +12,8 @@ import { getPostHogClient } from "@/lib/posthog-server";
 import { verifyPhotoTestOrderToken } from "@/lib/server/photo-test-order-token";
 import { r2ObjectExists } from "@/lib/server/r2";
 import { stripeClient } from "@/lib/server/stripe";
+import { sendTikTokInitiateCheckoutEvent } from "@/lib/server/tiktok";
+import { splitTikTokClickIdForMetadata } from "@/lib/tiktok";
 
 export const runtime = "nodejs";
 
@@ -49,6 +51,9 @@ export async function POST(request: Request) {
     const config = photoTestPackages[order.packageId];
     const initiateCheckoutEventId = `${order.orderId}_initiate_checkout`;
     const cancelPath = order.returnPath ?? "/test";
+    const [ttclid, ttclidContinuation] = splitTikTokClickIdForMetadata(
+      order.ttclid ?? "",
+    );
     const session = await stripeClient().checkout.sessions.create({
       mode: "payment",
       ...(order.email ? { customer_email: order.email } : {}),
@@ -72,8 +77,12 @@ export async function POST(request: Request) {
         airtableRecordId: order.airtableRecordId,
         email: metadataString(order.email),
         sourceUrl: metadataString(order.sourceUrl),
+        referrer: metadataString(order.referrer),
         fbp: metadataString(order.fbp),
         fbc: metadataString(order.fbc),
+        ttp: metadataString(order.ttp ?? ""),
+        ttclid,
+        ttclidContinuation,
         userAgent: metadataString(order.userAgent),
         ipAddress: metadataString(order.ipAddress),
         initiateCheckoutEventId,
@@ -88,18 +97,34 @@ export async function POST(request: Request) {
       "Payment Status": session.payment_status ?? "unpaid",
     });
 
-    await sendMetaInitiateCheckoutEvent({
-      email: order.email,
-      eventId: initiateCheckoutEventId,
-      sourceUrl: order.sourceUrl,
-      userAgent: order.userAgent,
-      ipAddress: order.ipAddress,
-      fbp: order.fbp,
-      fbc: order.fbc,
-      packageId: order.packageId,
-      amountCents: PHOTO_TEST_PRICE_CENTS,
-      currency: PHOTO_TEST_CURRENCY,
-    }).catch((error) => console.error(error));
+    await Promise.all([
+      sendMetaInitiateCheckoutEvent({
+        email: order.email,
+        eventId: initiateCheckoutEventId,
+        sourceUrl: order.sourceUrl,
+        userAgent: order.userAgent,
+        ipAddress: order.ipAddress,
+        fbp: order.fbp,
+        fbc: order.fbc,
+        packageId: order.packageId,
+        amountCents: PHOTO_TEST_PRICE_CENTS,
+        currency: PHOTO_TEST_CURRENCY,
+      }).catch((error) => console.error(error)),
+      sendTikTokInitiateCheckoutEvent({
+        email: order.email,
+        eventId: initiateCheckoutEventId,
+        sourceUrl: order.sourceUrl,
+        referrer: order.referrer,
+        userAgent: order.userAgent,
+        ipAddress: order.ipAddress,
+        ttp: order.ttp ?? "",
+        ttclid: order.ttclid ?? "",
+        packageId: order.packageId,
+        contentName: config.title,
+        amountCents: PHOTO_TEST_PRICE_CENTS,
+        currency: PHOTO_TEST_CURRENCY,
+      }).catch((error) => console.error(error)),
+    ]);
 
     getPostHogClient().capture({
       distinctId: order.email || order.orderId,

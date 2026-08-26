@@ -5,6 +5,8 @@ import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import posthog from "posthog-js";
 
 import {
+  PHOTO_TEST_CURRENCY,
+  PHOTO_TEST_PRICE_CENTS,
   PhotoTestPackageId,
   VoterAgeRange,
   inferImageType,
@@ -14,6 +16,11 @@ import {
   validatePhotoMeta,
   voterAgeRanges,
 } from "@/lib/photo-test";
+import {
+  createTikTokCommerceProperties,
+  getTikTokBrowserIdentifiers,
+  trackTikTokEvent,
+} from "@/lib/tiktok";
 import styles from "./test.module.css";
 
 declare global {
@@ -159,6 +166,7 @@ export default function PhotoTestPage() {
     setIsSubmitting(true);
 
     try {
+      const { ttp, ttclid } = getTikTokBrowserIdentifiers();
       setStatus("Creating test");
       const initResponse = await fetch("/api/photo-tests/init", {
         method: "POST",
@@ -178,6 +186,8 @@ export default function PhotoTestPage() {
           referrer: document.referrer,
           fbp: getCookie("_fbp"),
           fbc: getCookie("_fbc"),
+          ttp,
+          ttclid,
         }),
       });
 
@@ -224,6 +234,16 @@ export default function PhotoTestPage() {
         },
         { eventID: checkout.initiateCheckoutEventId },
       );
+      trackTikTokEvent({
+        eventName: "InitiateCheckout",
+        eventId: checkout.initiateCheckoutEventId,
+        properties: createTikTokCommerceProperties({
+          contentId: packageId,
+          contentName: selectedPackage.title,
+          value: PHOTO_TEST_PRICE_CENTS / 100,
+          currency: PHOTO_TEST_CURRENCY,
+        }),
+      });
       posthog.identify(email, { email });
       posthog.capture("checkout_initiated", {
         package_id: packageId,

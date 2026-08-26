@@ -26,6 +26,8 @@ type InitBody = {
   referrer?: unknown;
   fbp?: unknown;
   fbc?: unknown;
+  ttp?: unknown;
+  ttclid?: unknown;
   returnPath?: unknown;
 };
 
@@ -53,6 +55,10 @@ function clientIp(headers: Headers) {
 function checkoutReturnPath(value: unknown) {
   if (value === "/photo-test") return value;
   return undefined;
+}
+
+function attributionValue(value: unknown, maxLength: number) {
+  return typeof value === "string" && value.length <= maxLength ? value : "";
 }
 
 export async function POST(request: Request) {
@@ -113,6 +119,8 @@ export async function POST(request: Request) {
     const referrer = String(body.referrer ?? "");
     const fbp = String(body.fbp ?? "");
     const fbc = String(body.fbc ?? "");
+    const ttp = attributionValue(body.ttp, 500);
+    const ttclid = attributionValue(body.ttclid, 1000);
     const userAgent = request.headers.get("user-agent") ?? "";
     const ipAddress = clientIp(request.headers);
     const recordFields = {
@@ -145,6 +153,8 @@ export async function POST(request: Request) {
       referrer,
       fbp,
       fbc,
+      ttp,
+      ttclid,
       userAgent,
       ipAddress,
       returnPath,

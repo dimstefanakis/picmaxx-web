@@ -11,6 +11,8 @@ import {
 import posthog from "posthog-js";
 
 import {
+  PHOTO_TEST_CURRENCY,
+  PHOTO_TEST_PRICE_CENTS,
   PhotoTestPackageId,
   VoterAgeRange,
   inferImageType,
@@ -20,6 +22,11 @@ import {
   validatePhotoMeta,
   voterAgeRanges,
 } from "@/lib/photo-test";
+import {
+  createTikTokCommerceProperties,
+  getTikTokBrowserIdentifiers,
+  trackTikTokEvent,
+} from "@/lib/tiktok";
 import styles from "./photo-test.module.css";
 
 declare global {
@@ -217,6 +224,7 @@ export default function PhotoTestAdPage() {
     setIsSubmitting(true);
 
     try {
+      const { ttp, ttclid } = getTikTokBrowserIdentifiers();
       const initResponse = await fetch("/api/photo-tests/init", {
         method: "POST",
         headers: {
@@ -234,6 +242,8 @@ export default function PhotoTestAdPage() {
           referrer: document.referrer,
           fbp: getCookie("_fbp"),
           fbc: getCookie("_fbc"),
+          ttp,
+          ttclid,
           returnPath,
         }),
       });
@@ -279,6 +289,16 @@ export default function PhotoTestAdPage() {
         },
         { eventID: checkout.initiateCheckoutEventId },
       );
+      trackTikTokEvent({
+        eventName: "InitiateCheckout",
+        eventId: checkout.initiateCheckoutEventId,
+        properties: createTikTokCommerceProperties({
+          contentId: adPackageId,
+          contentName: selectedPackage.title,
+          value: PHOTO_TEST_PRICE_CENTS / 100,
+          currency: PHOTO_TEST_CURRENCY,
+        }),
+      });
       posthog.capture("checkout_initiated", {
         package_id: adPackageId,
         voter_age_range: voterAgeRange,

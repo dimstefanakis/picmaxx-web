@@ -13,6 +13,8 @@ export type PhotoTestOrderTokenPayload = {
   referrer: string;
   fbp: string;
   fbc: string;
+  ttp?: string;
+  ttclid?: string;
   userAgent: string;
   ipAddress: string;
   returnPath?: string;

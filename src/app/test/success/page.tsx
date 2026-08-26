@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useEffect } from "react";
 import posthog from "posthog-js";
 
-import { PHOTO_TEST_CURRENCY, PHOTO_TEST_PRICE_CENTS } from "@/lib/photo-test";
+import {
+  createTikTokCommerceProperties,
+  trackTikTokEvent,
+} from "@/lib/tiktok";
 import styles from "../test.module.css";
 
 declare global {
@@ -13,55 +16,113 @@ declare global {
   }
 }
 
+type PaidPurchase = {
+  ok: true;
+  paid: true;
+  eventId: string;
+  packageId: string;
+  contentName: string;
+  amountCents: number;
+  currency: string;
+};
+
 export default function PhotoTestSuccessPage() {
   useEffect(() => {
     const orderId = new URLSearchParams(window.location.search).get("order");
-    if (!orderId) return;
+    const sessionId = new URLSearchParams(window.location.search).get("session_id");
+    if (!orderId || !sessionId) return;
 
-    const posthogStorageKey = `picmaxx_posthog_purchase_${orderId}`;
-    if (!window.sessionStorage.getItem(posthogStorageKey)) {
-      posthog.capture("purchase_completed", {
-        order_id: orderId,
-        value: PHOTO_TEST_PRICE_CENTS / 100,
-        currency: PHOTO_TEST_CURRENCY.toUpperCase(),
-      });
-      window.sessionStorage.setItem(posthogStorageKey, "1");
-    }
-
-    const storageKey = `picmaxx_purchase_${orderId}`;
-    let retries = 0;
     let cancelled = false;
+    let retryTimeout: number | undefined;
 
-    function trackPurchase() {
-      if (cancelled) return;
+    async function verifyAndTrackPurchase() {
+      try {
+        const response = await fetch("/api/photo-tests/purchase-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId, sessionId }),
+        });
+        if (!response.ok) return;
 
-      if (window.fbq) {
-        if (!window.sessionStorage.getItem(storageKey)) {
-          window.fbq(
-            "track",
-            "Purchase",
-            {
-              value: PHOTO_TEST_PRICE_CENTS / 100,
-              currency: PHOTO_TEST_CURRENCY.toUpperCase(),
-              content_name: "Picmaxx Paid Photo Test",
-              content_type: "photo_test",
-            },
-            { eventID: orderId },
-          );
-          window.sessionStorage.setItem(storageKey, "1");
+        const purchase = (await response.json()) as
+          | PaidPurchase
+          | { ok: true; paid: false };
+        if (cancelled || !purchase.paid) return;
+        const paidPurchase: PaidPurchase = purchase;
+
+        const posthogStorageKey = `picmaxx_posthog_purchase_${paidPurchase.eventId}`;
+        if (!window.sessionStorage.getItem(posthogStorageKey)) {
+          posthog.capture("purchase_completed", {
+            order_id: paidPurchase.eventId,
+            package_id: paidPurchase.packageId,
+            value: paidPurchase.amountCents / 100,
+            currency: paidPurchase.currency.toUpperCase(),
+          });
+          window.sessionStorage.setItem(posthogStorageKey, "1");
         }
-        return;
-      }
 
-      if (retries < 20) {
-        retries += 1;
-        window.setTimeout(trackPurchase, 250);
+        const metaStorageKey = `picmaxx_purchase_${paidPurchase.eventId}`;
+        const tiktokStorageKey = `picmaxx_tiktok_purchase_${paidPurchase.eventId}`;
+        const tiktokProperties = createTikTokCommerceProperties({
+          contentId: paidPurchase.packageId,
+          contentName: paidPurchase.contentName,
+          value: paidPurchase.amountCents / 100,
+          currency: paidPurchase.currency,
+        });
+        let retries = 0;
+
+        function trackPurchase() {
+          if (cancelled) return;
+
+          if (window.fbq && !window.sessionStorage.getItem(metaStorageKey)) {
+            window.fbq(
+              "track",
+              "Purchase",
+              {
+                value: paidPurchase.amountCents / 100,
+                currency: paidPurchase.currency.toUpperCase(),
+                content_name: paidPurchase.contentName,
+                content_type: paidPurchase.packageId,
+              },
+              { eventID: paidPurchase.eventId },
+            );
+            window.sessionStorage.setItem(metaStorageKey, "1");
+          }
+
+          if (
+            !window.sessionStorage.getItem(tiktokStorageKey) &&
+            trackTikTokEvent({
+              eventName: "Purchase",
+              eventId: paidPurchase.eventId,
+              properties: tiktokProperties,
+            })
+          ) {
+            window.sessionStorage.setItem(tiktokStorageKey, "1");
+          }
+
+          if (
+            window.sessionStorage.getItem(metaStorageKey) &&
+            window.sessionStorage.getItem(tiktokStorageKey)
+          ) {
+            return;
+          }
+
+          if (retries < 20) {
+            retries += 1;
+            retryTimeout = window.setTimeout(trackPurchase, 250);
+          }
+        }
+
+        trackPurchase();
+      } catch {
+        // The signed Stripe webhook remains the source of truth for purchase tracking.
       }
     }
 
-    trackPurchase();
+    void verifyAndTrackPurchase();
     return () => {
       cancelled = true;
+      if (retryTimeout) window.clearTimeout(retryTimeout);
     };
   }, []);
 
