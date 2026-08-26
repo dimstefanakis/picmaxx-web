@@ -9,6 +9,7 @@ import {
 } from "@/lib/tiktok";
 
 export const runtime = "nodejs";
+export const maxDuration = 35;
 
 type ViewContentBody = {
   eventId?: unknown;

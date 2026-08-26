@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import {
   PHOTO_TEST_CURRENCY,
   PHOTO_TEST_PRICE_CENTS,
@@ -16,6 +18,7 @@ import { sendTikTokInitiateCheckoutEvent } from "@/lib/server/tiktok";
 import { splitTikTokClickIdForMetadata } from "@/lib/tiktok";
 
 export const runtime = "nodejs";
+export const maxDuration = 35;
 
 type CheckoutBody = {
   orderToken?: unknown;
@@ -97,34 +100,40 @@ export async function POST(request: Request) {
       "Payment Status": session.payment_status ?? "unpaid",
     });
 
-    await Promise.all([
-      sendMetaInitiateCheckoutEvent({
-        email: order.email,
-        eventId: initiateCheckoutEventId,
-        sourceUrl: order.sourceUrl,
-        userAgent: order.userAgent,
-        ipAddress: order.ipAddress,
-        fbp: order.fbp,
-        fbc: order.fbc,
-        packageId: order.packageId,
-        amountCents: PHOTO_TEST_PRICE_CENTS,
-        currency: PHOTO_TEST_CURRENCY,
-      }).catch((error) => console.error(error)),
-      sendTikTokInitiateCheckoutEvent({
-        email: order.email,
-        eventId: initiateCheckoutEventId,
-        sourceUrl: order.sourceUrl,
-        referrer: order.referrer,
-        userAgent: order.userAgent,
-        ipAddress: order.ipAddress,
-        ttp: order.ttp ?? "",
-        ttclid: order.ttclid ?? "",
-        packageId: order.packageId,
-        contentName: config.title,
-        amountCents: PHOTO_TEST_PRICE_CENTS,
-        currency: PHOTO_TEST_CURRENCY,
-      }).catch((error) => console.error(error)),
-    ]);
+    after(async () => {
+      try {
+        await sendTikTokInitiateCheckoutEvent({
+          email: order.email,
+          eventId: initiateCheckoutEventId,
+          sourceUrl: order.sourceUrl,
+          referrer: order.referrer,
+          userAgent: order.userAgent,
+          ipAddress: order.ipAddress,
+          ttp: order.ttp ?? "",
+          ttclid: order.ttclid ?? "",
+          packageId: order.packageId,
+          contentName: config.title,
+          amountCents: PHOTO_TEST_PRICE_CENTS,
+          currency: PHOTO_TEST_CURRENCY,
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    });
+
+    await sendMetaInitiateCheckoutEvent({
+      email: order.email,
+      eventId: initiateCheckoutEventId,
+      sourceUrl: order.sourceUrl,
+      userAgent: order.userAgent,
+      ipAddress: order.ipAddress,
+      fbp: order.fbp,
+      fbc: order.fbc,
+      packageId: order.packageId,
+      amountCents: PHOTO_TEST_PRICE_CENTS,
+      currency: PHOTO_TEST_CURRENCY,
+    })
+      .catch((error) => console.error(error));
 
     getPostHogClient().capture({
       distinctId: order.email || order.orderId,

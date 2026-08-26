@@ -10,7 +10,7 @@ import { requiredEnv } from "@/lib/server/env";
 
 const TIKTOK_EVENTS_API_URL =
   "https://business-api.tiktok.com/open_api/v1.3/event/track/";
-const TIKTOK_EVENTS_API_TIMEOUT_MS = 3_000;
+const TIKTOK_EVENTS_API_TIMEOUT_MS = 30_000;
 
 export type TikTokEventInput = {
   eventName: TikTokEventName;

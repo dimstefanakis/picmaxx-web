@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { after } from "next/server";
 
 import {
   PHOTO_TEST_CURRENCY,
@@ -15,6 +16,7 @@ import { sendTikTokPurchaseEvent } from "@/lib/server/tiktok";
 import { joinTikTokClickIdFromMetadata } from "@/lib/tiktok";
 
 export const runtime = "nodejs";
+export const maxDuration = 35;
 
 function fieldString(value: unknown) {
   return typeof value === "string" ? value : "";
@@ -123,29 +125,31 @@ export async function POST(request: Request) {
     }
   }
 
-  try {
-    await sendTikTokPurchaseEvent({
-      email,
-      eventId: orderId,
-      sourceUrl: fieldString(session.metadata?.sourceUrl) || siteUrl(),
-      referrer: fieldString(session.metadata?.referrer),
-      userAgent: fieldString(session.metadata?.userAgent),
-      ipAddress: fieldString(session.metadata?.ipAddress),
-      ttp: fieldString(session.metadata?.ttp),
-      ttclid: joinTikTokClickIdFromMetadata(
-        fieldString(session.metadata?.ttclid),
-        fieldString(session.metadata?.ttclidContinuation),
-      ),
-      packageId: packageId || "photo_test",
-      contentName: isPhotoTestPackageId(packageId)
-        ? photoTestPackages[packageId].title
-        : "Picmaxx Paid Photo Test",
-      amountCents: PHOTO_TEST_PRICE_CENTS,
-      currency: PHOTO_TEST_CURRENCY,
-    });
-  } catch (error) {
-    console.error(error);
-  }
+  after(async () => {
+    try {
+      await sendTikTokPurchaseEvent({
+        email,
+        eventId: orderId,
+        sourceUrl: fieldString(session.metadata?.sourceUrl) || siteUrl(),
+        referrer: fieldString(session.metadata?.referrer),
+        userAgent: fieldString(session.metadata?.userAgent),
+        ipAddress: fieldString(session.metadata?.ipAddress),
+        ttp: fieldString(session.metadata?.ttp),
+        ttclid: joinTikTokClickIdFromMetadata(
+          fieldString(session.metadata?.ttclid),
+          fieldString(session.metadata?.ttclidContinuation),
+        ),
+        packageId: packageId || "photo_test",
+        contentName: isPhotoTestPackageId(packageId)
+          ? photoTestPackages[packageId].title
+          : "Picmaxx Paid Photo Test",
+        amountCents: PHOTO_TEST_PRICE_CENTS,
+        currency: PHOTO_TEST_CURRENCY,
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  });
 
   return Response.json({ ok: true });
 }
