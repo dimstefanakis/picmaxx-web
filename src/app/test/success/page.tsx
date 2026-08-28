@@ -139,14 +139,14 @@ export default function PhotoTestSuccessPage() {
       <section className={styles.flow}>
         <div className={styles.hero}>
           <p className={styles.eyebrow}>test live</p>
-          <h1 className={styles.title}>Your photos are in.</h1>
+          <h1 className={styles.title}>Your test is live.</h1>
           <p className={styles.subcopy}>
-            Results arrive by email within 24 hours. We will send the winner, ranking, and the signal women gave each photo.
+            Your score and private feedback arrive by email within 24 hours.
           </p>
         </div>
         <div className={styles.summary}>
           <span>What happens now</span>
-          <strong>Real women vote privately. You get the answer by email.</strong>
+          <strong>Real women review your photo privately. You get the result by email.</strong>
         </div>
         <Link className={styles.checkoutButton} href="/">
           <span>Back to Picmaxx</span>

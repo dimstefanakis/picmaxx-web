@@ -1,4 +1,5 @@
 import {
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -64,4 +65,47 @@ export async function r2ObjectExists(key: string) {
   } catch {
     return false;
   }
+}
+
+function isMissingObjectError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+
+  const candidate = error as {
+    name?: unknown;
+    $metadata?: { httpStatusCode?: unknown };
+  };
+
+  return (
+    candidate.name === "NoSuchKey" ||
+    candidate.name === "NotFound" ||
+    candidate.$metadata?.httpStatusCode === 404
+  );
+}
+
+export async function readR2Json<T>(key: string): Promise<T | null> {
+  try {
+    const object = await r2Client().send(
+      new GetObjectCommand({
+        Bucket: r2Bucket(),
+        Key: key,
+      }),
+    );
+    const body = await object.Body?.transformToString("utf-8");
+    return body ? (JSON.parse(body) as T) : null;
+  } catch (error) {
+    if (isMissingObjectError(error)) return null;
+    throw error;
+  }
+}
+
+export async function writeR2Json(key: string, value: unknown) {
+  await r2Client().send(
+    new PutObjectCommand({
+      Bucket: r2Bucket(),
+      Key: key,
+      Body: JSON.stringify(value),
+      ContentType: "application/json; charset=utf-8",
+      CacheControl: "private, no-store",
+    }),
+  );
 }

@@ -116,6 +116,19 @@
   width: 100%;
 }
 
+.stepKicker {
+  width: max-content;
+  max-width: 100%;
+  padding: 6px 9px;
+  border: 1px solid var(--ink);
+  background: var(--blush);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .stepTitle {
   max-width: 12ch;
   margin: 0;
@@ -499,23 +512,23 @@
 
 .ageGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
   width: 100%;
 }
 
 .ageChip {
-  display: grid;
-  align-content: start;
-  gap: 6px;
-  min-height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 58px;
   width: 100%;
-  padding: 13px;
+  padding: 10px 6px;
   border: 1px solid var(--ink);
   border-radius: 0;
   background: var(--white);
   color: var(--ink);
-  text-align: left;
+  text-align: center;
   box-shadow: 5px 5px 0 var(--ink);
   cursor: pointer;
   transition:
@@ -533,7 +546,7 @@
 
 .ageChip strong {
   font-family: var(--font-archivo-black), var(--font-manrope), sans-serif;
-  font-size: 21px;
+  font-size: clamp(15px, 4.5vw, 20px);
   line-height: 0.95;
   letter-spacing: 0;
 }
@@ -548,8 +561,8 @@
 
 .uploadGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
   width: 100%;
   justify-self: stretch;
 }
@@ -566,6 +579,15 @@
   box-shadow: 5px 5px 0 var(--ink);
 }
 
+.photoSlotDisabled {
+  opacity: 0.72;
+}
+
+.photoSlotDisabled label,
+.photoSlotDisabled button {
+  cursor: wait;
+}
+
 .photoSlot input {
   position: absolute;
   inset: 0;
@@ -580,6 +602,7 @@
   gap: 5px;
   width: 100%;
   height: 100%;
+  padding: 6px;
   cursor: pointer;
   text-align: center;
 }
@@ -604,7 +627,7 @@
 }
 
 .photoSlot label strong {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 950;
   text-transform: uppercase;
 }
@@ -612,7 +635,7 @@
 .photoSlot label em {
   color: var(--muted);
   font-style: normal;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 850;
 }
 
@@ -633,9 +656,9 @@
 
 .photoMeta {
   position: absolute;
-  left: 9px;
-  right: 9px;
-  bottom: 42px;
+  left: 6px;
+  right: 6px;
+  bottom: 37px;
   z-index: 2;
   display: grid;
   gap: 2px;
@@ -651,30 +674,228 @@
 }
 
 .photoMeta span {
-  font-size: 10px;
+  font-size: 8px;
   font-weight: 950;
   text-transform: uppercase;
 }
 
 .photoMeta strong {
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 850;
 }
 
 .photoSlot button {
   position: absolute;
-  left: 9px;
-  right: 9px;
-  bottom: 9px;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
   z-index: 2;
-  min-height: 28px;
+  min-height: 26px;
   border: 1px solid var(--paper);
   border-radius: 999px;
   background: rgba(247, 242, 232, 0.92);
   color: var(--ink);
-  font-size: 10px;
+  font-size: 8px;
   font-weight: 950;
   text-transform: uppercase;
+}
+
+.uploadStatus {
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ink);
+  background: var(--paper-soft);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.winnerCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-self: center;
+  gap: 10px;
+  justify-self: center;
+  width: min(100%, 300px);
+  padding: 10px;
+  border: 1px solid var(--ink);
+  background: var(--white);
+  box-shadow: 8px 8px 0 var(--blue);
+}
+
+.winnerPhoto {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 4 / 5;
+  border: 1px solid var(--ink);
+  background: var(--paper-soft);
+}
+
+.winnerPhoto img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.winnerPhoto span {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  left: 5px;
+  padding: 6px;
+  border: 1px solid var(--ink);
+  background: var(--acid);
+  color: var(--ink);
+  font-size: 8px;
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: 0;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.winnerCopy {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 3px 4px;
+}
+
+.winnerCopy > span {
+  width: max-content;
+  max-width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--ink);
+  background: var(--blush);
+  font-size: 9px;
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.winnerCopy p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.winnerStep {
+  grid-template-rows: auto minmax(min-content, 1fr);
+  align-content: stretch;
+  gap: 12px;
+}
+
+.winnerStep .stepCopyBlock {
+  gap: 8px;
+}
+
+.winnerStep .stepTitle {
+  max-width: 9ch;
+  font-size: clamp(40px, 11vw, 58px);
+}
+
+.scoreStep {
+  gap: 16px;
+}
+
+.scoreStepTitle {
+  max-width: 11ch;
+  font-size: clamp(38px, 10vw, 58px);
+}
+
+.scoreMeter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 108px;
+  padding: 18px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: 6px 6px 0 var(--acid);
+}
+
+.scoreBlurredDigits {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  padding: 0 4px;
+  filter: blur(8px);
+  opacity: 0.84;
+  user-select: none;
+}
+
+.scoreBlurredDigits i {
+  display: block;
+  width: 24px;
+  height: 48px;
+  border-radius: 7px;
+  background: var(--paper);
+}
+
+.scoreBlurredDigits .scoreBlurDot {
+  width: 9px;
+  height: 9px;
+  margin-bottom: 2px;
+  border-radius: 999px;
+}
+
+.scoreMeter > span {
+  color: var(--acid);
+  font-family: var(--font-archivo-black), var(--font-manrope), sans-serif;
+  font-size: 27px;
+  line-height: 1;
+}
+
+.scoreMeter > b {
+  margin-left: auto;
+  padding: 7px 8px;
+  border: 1px solid var(--paper);
+  background: var(--acid);
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.rangeBlock,
+.rangeHeading {
+  display: grid;
+  width: 100%;
+}
+
+.rangeBlock {
+  gap: 10px;
+}
+
+.rangeHeading {
+  gap: 4px;
+}
+
+.rangeHeading strong {
+  font-family: var(--font-archivo-black), var(--font-manrope), sans-serif;
+  font-size: 23px;
+  line-height: 0.95;
+  text-transform: uppercase;
+}
+
+.rangeHeading span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.2;
 }
 
 .stepActions {
@@ -725,6 +946,18 @@
 .navButton:hover {
   box-shadow: 3px 3px 0 var(--ink);
   transform: translate(3px, 3px);
+}
+
+.navButton:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.navButtonText {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
 }
 
 .navButtonSecondary {
@@ -784,7 +1017,7 @@
 .checkoutButtonText {
   gap: 10px;
   padding: 0 18px;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .buttonSpinner {
@@ -942,5 +1175,24 @@
   .uploadGrid {
     gap: 8px;
     width: 100%;
+  }
+
+  .photoSlot label span {
+    width: 32px;
+    height: 32px;
+    font-size: 21px;
+  }
+
+  .checkoutButtonText {
+    justify-content: center;
+    padding: 0 6px;
+    font-size: 16px;
+    line-height: 1.05;
+    text-align: center;
+  }
+
+  .checkoutButton > strong {
+    min-width: 62px;
+    font-size: 20px;
   }
 }

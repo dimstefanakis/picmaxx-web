@@ -1,6 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-import type { PhotoTestPackageId } from "@/lib/photo-test";
+import type {
+  PhotoTestPackageId,
+  VoterAgeRange,
+} from "@/lib/photo-test";
 import { requiredEnv } from "@/lib/server/env";
 
 export type PhotoTestOrderTokenPayload = {
@@ -8,6 +11,7 @@ export type PhotoTestOrderTokenPayload = {
   airtableRecordId: string;
   packageId: PhotoTestPackageId;
   email: string;
+  voterAgeRange?: VoterAgeRange;
   r2Keys: string[];
   sourceUrl: string;
   referrer: string;

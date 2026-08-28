@@ -68,11 +68,11 @@ export function createTikTokViewContentProperties({
   value: number;
   currency: string;
 }) {
-  const isLeadPhotoTest = pathname === "/photo-test";
+  const isAdPhotoTest = pathname === "/photo-test";
   return createTikTokCommerceProperties({
-    contentId: isLeadPhotoTest ? "single" : "photo_test",
-    contentName: isLeadPhotoTest
-      ? "Picmaxx Lead Photo Score"
+    contentId: isAdPhotoTest ? "best_of_three" : "photo_test",
+    contentName: isAdPhotoTest
+      ? "Picmaxx Best Photo Test"
       : "Picmaxx Paid Photo Test",
     value,
     currency,

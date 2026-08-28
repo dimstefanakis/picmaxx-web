@@ -33,6 +33,12 @@ export const photoTestPackages = {
   },
 } as const;
 
+export const photoTestAdCheckout = {
+  stripeName: "Picmaxx 20-Woman Photo Score",
+  resultCopy:
+    "20 real women score your selected photo out of 10 and explain what helped or hurt.",
+} as const;
+
 export type PhotoTestPackageId = keyof typeof photoTestPackages;
 
 export const voterAgeRanges = [

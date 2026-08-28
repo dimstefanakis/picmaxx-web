@@ -102,8 +102,8 @@ describe("TikTok Events API payload", () => {
       value: 9,
       contents: [
         {
-          content_id: "single",
-          content_name: "Picmaxx Lead Photo Score",
+          content_id: "best_of_three",
+          content_name: "Picmaxx Best Photo Test",
           price: 9,
           quantity: 1,
         },

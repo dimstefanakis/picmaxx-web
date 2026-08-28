@@ -5,14 +5,20 @@ import {
   PHOTO_TEST_PRICE_CENTS,
   isValidPhotoCount,
   isPhotoTestPackageId,
+  isVoterAgeRange,
+  photoTestAdCheckout,
   photoTestPackages,
 } from "@/lib/photo-test";
 import { updatePaidTestRecord } from "@/lib/server/airtable";
 import { siteUrl } from "@/lib/server/env";
 import { sendMetaInitiateCheckoutEvent } from "@/lib/server/meta";
 import { getPostHogClient } from "@/lib/posthog-server";
+import {
+  normalizePhotoPickForClient,
+  photoPickerCacheKey,
+} from "@/lib/server/photo-picker";
 import { verifyPhotoTestOrderToken } from "@/lib/server/photo-test-order-token";
-import { r2ObjectExists } from "@/lib/server/r2";
+import { r2ObjectExists, readR2Json } from "@/lib/server/r2";
 import { stripeClient } from "@/lib/server/stripe";
 import { sendTikTokInitiateCheckoutEvent } from "@/lib/server/tiktok";
 import { splitTikTokClickIdForMetadata } from "@/lib/tiktok";
@@ -22,6 +28,7 @@ export const maxDuration = 35;
 
 type CheckoutBody = {
   orderToken?: unknown;
+  voterAgeRange?: unknown;
 };
 
 function jsonError(message: string, status = 400) {
@@ -36,9 +43,29 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as CheckoutBody;
     const order = verifyPhotoTestOrderToken(body.orderToken);
+    const isAdFlow = order.returnPath === "/photo-test";
+    const submittedVoterAgeRange = isVoterAgeRange(body.voterAgeRange)
+      ? body.voterAgeRange
+      : undefined;
+
+    if (body.voterAgeRange !== undefined && !submittedVoterAgeRange) {
+      return jsonError("Choose a valid voter age range.");
+    }
+    if (isAdFlow && !submittedVoterAgeRange) {
+      return jsonError("Choose a valid voter age range.");
+    }
+
+    const voterAgeRange = isAdFlow
+      ? submittedVoterAgeRange
+      : isVoterAgeRange(order.voterAgeRange)
+        ? order.voterAgeRange
+        : undefined;
 
     if (!isPhotoTestPackageId(order.packageId)) {
       return jsonError("Order package is invalid.", 409);
+    }
+    if (isAdFlow && order.packageId !== "best_of_three") {
+      return jsonError("Order package is invalid for this flow.", 409);
     }
 
     if (!isValidPhotoCount(order.packageId, order.r2Keys.length)) {
@@ -50,16 +77,74 @@ export async function POST(request: Request) {
       return jsonError("Photo upload is still finishing. Try again in a moment.", 409);
     }
 
+    let selectedR2Key = "";
+    let selectedPhotoPosition = "";
+    if (isAdFlow) {
+      try {
+        const cachedPick = normalizePhotoPickForClient(
+          await readR2Json<unknown>(photoPickerCacheKey(order.orderId)),
+        );
+        if (!cachedPick) {
+          return jsonError("Find your best photo first.", 409);
+        }
+
+        selectedR2Key = order.r2Keys[cachedPick.winnerIndex] ?? "";
+        selectedPhotoPosition = String(cachedPick.winnerIndex + 1);
+        if (!selectedR2Key) {
+          return jsonError("Selected photo is unavailable. Try again.", 409);
+        }
+      } catch (error) {
+        console.error(error);
+        return jsonError("Could not load your selected photo. Try again.", 503);
+      }
+    }
+
     const origin = siteUrl();
     const config = photoTestPackages[order.packageId];
+    const stripeName = isAdFlow
+      ? photoTestAdCheckout.stripeName
+      : config.stripeName;
+    const resultCopy = isAdFlow
+      ? photoTestAdCheckout.resultCopy
+      : config.resultCopy;
     const initiateCheckoutEventId = `${order.orderId}_initiate_checkout`;
     const cancelPath = order.returnPath ?? "/test";
     const [ttclid, ttclidContinuation] = splitTikTokClickIdForMetadata(
       order.ttclid ?? "",
     );
+    const metadata = {
+      orderId: order.orderId,
+      packageId: order.packageId,
+      airtableRecordId: order.airtableRecordId,
+      email: metadataString(order.email),
+      voterAgeRange: metadataString(voterAgeRange ?? ""),
+      sourceUrl: metadataString(order.sourceUrl),
+      referrer: metadataString(order.referrer),
+      fbp: metadataString(order.fbp),
+      fbc: metadataString(order.fbc),
+      ttp: metadataString(order.ttp ?? ""),
+      ttclid,
+      ttclidContinuation,
+      userAgent: metadataString(order.userAgent),
+      ipAddress: metadataString(order.ipAddress),
+      initiateCheckoutEventId,
+      selectedPhotoPosition,
+      selectedR2Key: metadataString(selectedR2Key),
+    };
+
+    if (isAdFlow && voterAgeRange && selectedR2Key) {
+      await updatePaidTestRecord(order.airtableRecordId, {
+        Package: photoTestPackages.single.airtableLabel,
+        "Package ID": photoTestPackages.single.id,
+        "Voter Age Range": voterAgeRange,
+        "R2 Keys": selectedR2Key,
+      });
+    }
+
     const session = await stripeClient().checkout.sessions.create({
       mode: "payment",
       ...(order.email ? { customer_email: order.email } : {}),
+      client_reference_id: order.orderId,
       submit_type: "pay",
       line_items: [
         {
@@ -68,27 +153,15 @@ export async function POST(request: Request) {
             currency: PHOTO_TEST_CURRENCY,
             unit_amount: PHOTO_TEST_PRICE_CENTS,
             product_data: {
-              name: config.stripeName,
-              description: config.resultCopy,
+              name: stripeName,
+              description: resultCopy,
             },
           },
         },
       ],
-      metadata: {
-        orderId: order.orderId,
-        packageId: order.packageId,
-        airtableRecordId: order.airtableRecordId,
-        email: metadataString(order.email),
-        sourceUrl: metadataString(order.sourceUrl),
-        referrer: metadataString(order.referrer),
-        fbp: metadataString(order.fbp),
-        fbc: metadataString(order.fbc),
-        ttp: metadataString(order.ttp ?? ""),
-        ttclid,
-        ttclidContinuation,
-        userAgent: metadataString(order.userAgent),
-        ipAddress: metadataString(order.ipAddress),
-        initiateCheckoutEventId,
+      metadata,
+      payment_intent_data: {
+        metadata,
       },
       success_url: `${origin}/test/success?order=${encodeURIComponent(order.orderId)}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}${cancelPath}?order=${encodeURIComponent(order.orderId)}`,

@@ -78,12 +78,24 @@ export async function POST(request: Request) {
       return jsonError("Enter a valid email.");
     }
 
-    if (!isVoterAgeRange(body.voterAgeRange)) {
+    const voterAgeRange = isVoterAgeRange(body.voterAgeRange)
+      ? body.voterAgeRange
+      : undefined;
+    if (body.voterAgeRange !== undefined && !voterAgeRange) {
+      return jsonError("Choose a valid voter age range.");
+    }
+    if (!voterAgeRange && returnPath !== "/photo-test") {
       return jsonError("Choose a valid voter age range.");
     }
 
     const config = photoTestPackages[body.packageId];
     const files = Array.isArray(body.files) ? body.files : [];
+    if (
+      returnPath === "/photo-test" &&
+      (body.packageId !== "best_of_three" || files.length !== 3)
+    ) {
+      return jsonError("Find my best photo requires 3 photos.");
+    }
     if (!isValidPhotoCount(body.packageId, files.length)) {
       return jsonError(
         `${config.title} requires ${photoCountLabel(body.packageId)}.`,
@@ -127,7 +139,7 @@ export async function POST(request: Request) {
       "Order ID": id,
       Package: config.airtableLabel,
       "Package ID": config.id,
-      "Voter Age Range": body.voterAgeRange,
+      ...(voterAgeRange ? { "Voter Age Range": voterAgeRange } : {}),
       Status: "upload_pending",
       "Payment Status": "not_started",
       Amount: 900,
@@ -148,6 +160,7 @@ export async function POST(request: Request) {
       airtableRecordId: record.id,
       packageId: body.packageId,
       email,
+      voterAgeRange,
       r2Keys,
       sourceUrl,
       referrer,
@@ -167,7 +180,7 @@ export async function POST(request: Request) {
       properties: {
         order_id: id,
         package_id: body.packageId,
-        voter_age_range: body.voterAgeRange,
+        ...(voterAgeRange ? { voter_age_range: voterAgeRange } : {}),
         photo_count: files.length,
         source_url: sourceUrl,
       },
