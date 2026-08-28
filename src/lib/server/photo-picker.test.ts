@@ -50,40 +50,64 @@ describe("photo picker validation", () => {
   it("normalizes valid output and rejects unsupported provider shapes", () => {
     expect(
       normalizePhotoPick({
-        version: PHOTO_PICKER_VERSION,
-        winner: "photo_2",
-        confidence: "clear",
-        reason: "  Cleaner framing\nputs the face first.  ",
+        bestPhoto: "photo_2",
+        setQuality: "weak",
+        headline: "  Photo 1 is the clear winner.  ",
+        strength: "  Basic face visibility.  ",
+        diagnosis:
+          "  The angle is doing you zero favors, and the expression gives nothing.  ",
+        bridge: "  Wrong bridge.  ",
       }),
     ).toEqual({
-      version: PHOTO_PICKER_VERSION,
-      winner: "photo_2",
-      confidence: "clear",
-      reason: "Cleaner framing puts the face first.",
+      bestPhoto: "photo_2",
+      setQuality: "weak",
+      headline: "Photo 2 wins this set. Barely.",
+      strength: null,
+      diagnosis:
+        "The angle is doing you zero favors, and the expression gives nothing.",
+      bridge:
+        "It wins this set, but that doesn't mean it lands. See how 20 real women score it.",
     });
 
     expect(
       normalizePhotoPick({
-        version: PHOTO_PICKER_VERSION,
-        winner: "photo_4",
-        confidence: "clear",
-        reason: "Nope",
+        bestPhoto: "photo_4",
+        setQuality: "weak",
+        headline: "Nope",
+        strength: null,
+        diagnosis: "Nope",
+        bridge: "Nope",
       }),
     ).toBeNull();
     expect(
       normalizePhotoPick({
-        version: PHOTO_PICKER_VERSION,
-        winner: "photo_1",
-        confidence: "certain",
-        reason: "Nope",
+        bestPhoto: "photo_1",
+        setQuality: "weak",
+        headline: "Photo 1 wins this set. Barely.",
+        strength: null,
+        diagnosis: "x".repeat(181),
+        bridge:
+          "It wins this set, but that doesn't mean it lands. See how 20 real women score it.",
       }),
     ).toBeNull();
     expect(
       normalizePhotoPick({
-        version: PHOTO_PICKER_VERSION,
-        winner: "photo_1",
-        confidence: "close",
-        reason: "x".repeat(181),
+        bestPhoto: "photo_1",
+        setQuality: "average",
+        headline: "Nope",
+        strength: null,
+        diagnosis: "Nope",
+        bridge: "Nope",
+      }),
+    ).toBeNull();
+    expect(
+      normalizePhotoPick({
+        bestPhoto: "photo_1",
+        setQuality: "usable",
+        headline: "Photo 1 is the safest option.",
+        strength: "   ",
+        diagnosis: "The crop is too tight.",
+        bridge: "See how 20 real women score it.",
       }),
     ).toBeNull();
   });
@@ -91,16 +115,23 @@ describe("photo picker validation", () => {
   it("maps stable photo IDs to a zero-based client index", () => {
     expect(
       photoPickForClient({
-        version: PHOTO_PICKER_VERSION,
-        winner: "photo_3",
-        confidence: "close",
-        reason: "The crop is stronger.",
+        bestPhoto: "photo_3",
+        setQuality: "usable",
+        headline: "Photo 3 is the safest option.",
+        strength: "The expression feels natural.",
+        diagnosis: "The background is doing too much.",
+        bridge: "See how 20 real women score it.",
       }),
     ).toEqual({
       version: PHOTO_PICKER_VERSION,
       winnerIndex: 2,
       confidence: "close",
-      reason: "The crop is stronger.",
+      reason: "The expression feels natural.",
+      setQuality: "usable",
+      headline: "Photo 3 is the safest option.",
+      strength: "The expression feels natural.",
+      diagnosis: "The background is doing too much.",
+      bridge: "See how 20 real women score it.",
     });
   });
 
@@ -126,6 +157,65 @@ describe("photo picker validation", () => {
         reason: "Invalid index.",
       }),
     ).toBeNull();
+
+    expect(
+      normalizePhotoPickForClient({
+        version: PHOTO_PICKER_VERSION,
+        winnerIndex: 0,
+        confidence: "close",
+        reason: "The relaxed expression feels natural.",
+        setQuality: "strong",
+        headline: "  Photo 1 is the clear winner. ",
+        strength: "  The relaxed\nexpression feels natural. ",
+        diagnosis: "  The crop is slightly tight. ",
+        bridge: "  See how 20 real women score it. ",
+      }),
+    ).toEqual({
+      version: PHOTO_PICKER_VERSION,
+      winnerIndex: 0,
+      confidence: "close",
+      reason: "The relaxed expression feels natural.",
+      setQuality: "strong",
+      headline: "Photo 1 is the clear winner.",
+      strength: "The relaxed expression feels natural.",
+      diagnosis: "The crop is slightly tight.",
+      bridge: "See how 20 real women score it.",
+    });
+
+    expect(
+      normalizePhotoPickForClient({
+        version: PHOTO_PICKER_VERSION,
+        winnerIndex: 1,
+        confidence: "close",
+        reason: "The angle is doing you zero favors.",
+        setQuality: "weak",
+        headline: "Photo 2 wins this set. Barely.",
+        strength: null,
+        diagnosis: "The angle is doing you zero favors.",
+        bridge:
+          "It wins this set, but that doesn't mean it lands. See how 20 real women score it.",
+      }),
+    ).toMatchObject({
+      winnerIndex: 1,
+      setQuality: "weak",
+      strength: null,
+      diagnosis: "The angle is doing you zero favors.",
+    });
+
+    expect(
+      normalizePhotoPickForClient({
+        version: PHOTO_PICKER_VERSION,
+        winnerIndex: 0,
+        confidence: "close",
+        reason: "Legacy copy survives.",
+        setQuality: "weak",
+      }),
+    ).toEqual({
+      version: PHOTO_PICKER_VERSION,
+      winnerIndex: 0,
+      confidence: "close",
+      reason: "Legacy copy survives.",
+    });
   });
 
   it("builds only versioned, order-scoped cache keys", () => {
@@ -158,11 +248,38 @@ describe("photo picker Responses API contract", () => {
     expect(request.model).toBe("picker-test-model");
     expect(request.reasoning).toEqual({ effort: "none" });
     expect(request.store).toBe(false);
+    expect(request.max_output_tokens).toBe(320);
     expect(request.metadata).toEqual({ pick_id: pickId });
+    expect(request.instructions).toContain(
+      "Winning a bad set does not make a photo good.",
+    );
+    expect(request.instructions).toContain("Never invent praise.");
     expect(request.text.format).toMatchObject({
       type: "json_schema",
       name: PHOTO_PICKER_VERSION,
       strict: true,
+    });
+    expect(request.text.format.schema.required).toEqual([
+      "bestPhoto",
+      "setQuality",
+      "headline",
+      "strength",
+      "diagnosis",
+      "bridge",
+    ]);
+    expect(request.text.format.schema.properties.setQuality.enum).toEqual([
+      "strong",
+      "usable",
+      "weak",
+    ]);
+    expect(request.text.format.schema.properties.strength.type).toEqual([
+      "string",
+      "null",
+    ]);
+    expect(request.text.format.schema.properties.strength.minLength).toBe(1);
+    expect(request.text.format.schema.properties.diagnosis).toMatchObject({
+      minLength: 1,
+      maxLength: 180,
     });
     expect(labels.map((label) => label.text)).toEqual([
       "photo_1:",
@@ -184,15 +301,17 @@ describe("photo picker Responses API contract", () => {
 
   it("parses both top-level and output-item response text", () => {
     const serialized = JSON.stringify({
-      version: PHOTO_PICKER_VERSION,
-      winner: "photo_1",
-      confidence: "close",
-      reason: "The expression feels more natural.",
+      bestPhoto: "photo_1",
+      setQuality: "usable",
+      headline: "Photo 1 is the safest option.",
+      strength: "The expression feels natural.",
+      diagnosis: "The crop is slightly tight.",
+      bridge: "See how 20 real women score it.",
     });
 
-    expect(parsePhotoPickerResponse({ output_text: serialized })?.winner).toBe(
-      "photo_1",
-    );
+    expect(
+      parsePhotoPickerResponse({ output_text: serialized })?.bestPhoto,
+    ).toBe("photo_1");
     expect(
       parsePhotoPickerResponse({
         output: [
@@ -200,7 +319,7 @@ describe("photo picker Responses API contract", () => {
             content: [{ type: "output_text", text: serialized }],
           },
         ],
-      })?.winner,
+      })?.bestPhoto,
     ).toBe("photo_1");
     expect(parsePhotoPickerResponse({ output_text: "not json" })).toBeNull();
   });
@@ -226,10 +345,14 @@ describe("photo picker Responses API contract", () => {
 
         return Response.json({
           output_text: JSON.stringify({
-            version: PHOTO_PICKER_VERSION,
-            winner: "photo_2",
-            confidence: "clear",
-            reason: "  Stronger light and direct eye contact. ",
+            bestPhoto: "photo_2",
+            setQuality: "weak",
+            headline: " Photo 2 wins this set. Barely. ",
+            strength: null,
+            diagnosis:
+              " The angle is doing you zero favors, and the expression gives nothing. ",
+            bridge:
+              " It wins this set, but that doesn't mean it lands. See how 20 real women score it. ",
           }),
         });
       },
@@ -243,10 +366,14 @@ describe("photo picker Responses API contract", () => {
 
     expect(fetchImplementation).toHaveBeenCalledTimes(1);
     expect(pick).toEqual({
-      version: PHOTO_PICKER_VERSION,
-      winner: "photo_2",
-      confidence: "clear",
-      reason: "Stronger light and direct eye contact.",
+      bestPhoto: "photo_2",
+      setQuality: "weak",
+      headline: "Photo 2 wins this set. Barely.",
+      strength: null,
+      diagnosis:
+        "The angle is doing you zero favors, and the expression gives nothing.",
+      bridge:
+        "It wins this set, but that doesn't mean it lands. See how 20 real women score it.",
     });
   });
 

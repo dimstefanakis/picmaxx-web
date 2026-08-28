@@ -52,12 +52,22 @@ type UploadResponse = {
   }[];
 };
 
-type PhotoPick = {
+type PhotoPickBase = {
   version: "photo_picker_v1";
   winnerIndex: 0 | 1 | 2;
   confidence: "clear" | "close";
   reason: string;
 };
+
+type PhotoPickNarrative = {
+  setQuality: "strong" | "usable" | "weak";
+  headline: string;
+  strength: string | null;
+  diagnosis: string;
+  bridge: string;
+};
+
+type PhotoPick = PhotoPickBase | (PhotoPickBase & PhotoPickNarrative);
 
 type PhotoPickResponse = {
   ok: true;
@@ -248,16 +258,47 @@ async function createAnalysisCopy(file: File) {
 
 function isPhotoPick(value: unknown): value is PhotoPick {
   if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<PhotoPick>;
-  return (
+  const candidate = value as Record<string, unknown>;
+  const baseIsValid =
     candidate.version === "photo_picker_v1" &&
     (candidate.winnerIndex === 0 ||
       candidate.winnerIndex === 1 ||
       candidate.winnerIndex === 2) &&
     (candidate.confidence === "clear" || candidate.confidence === "close") &&
     typeof candidate.reason === "string" &&
-    candidate.reason.trim().length > 0
+    candidate.reason.trim().length > 0;
+
+  if (!baseIsValid) return false;
+
+  const narrativeKeys = [
+    "setQuality",
+    "headline",
+    "strength",
+    "diagnosis",
+    "bridge",
+  ];
+  if (!narrativeKeys.some((key) => key in candidate)) return true;
+
+  return (
+    (candidate.setQuality === "strong" ||
+      candidate.setQuality === "usable" ||
+      candidate.setQuality === "weak") &&
+    typeof candidate.headline === "string" &&
+    candidate.headline.trim().length > 0 &&
+    (candidate.strength === null ||
+      (typeof candidate.strength === "string" &&
+        candidate.strength.trim().length > 0)) &&
+    typeof candidate.diagnosis === "string" &&
+    candidate.diagnosis.trim().length > 0 &&
+    typeof candidate.bridge === "string" &&
+    candidate.bridge.trim().length > 0
   );
+}
+
+function hasPhotoPickNarrative(
+  pick: PhotoPick,
+): pick is PhotoPickBase & PhotoPickNarrative {
+  return "setQuality" in pick;
 }
 
 export default function PhotoTestAdPage() {
@@ -309,6 +350,8 @@ export default function PhotoTestAdPage() {
   const isFirstStep = activeStepIndex === 0;
   const isFinalStep = activeStep === "range";
   const winningPhoto = photoPick ? photos[photoPick.winnerIndex] : null;
+  const richPhotoPick =
+    photoPick && hasPhotoPickNarrative(photoPick) ? photoPick : null;
 
   function invalidatePreparedPick() {
     selectionVersionRef.current += 1;
@@ -612,13 +655,18 @@ export default function PhotoTestAdPage() {
       setPhotoPick(pickData.pick);
       setError("");
       setActiveStep("winner");
+      const richPick = hasPhotoPickNarrative(pickData.pick)
+        ? pickData.pick
+        : null;
       posthog.capture("ai_pick_revealed", {
         order_id: nextOrderId,
         pick_id: pickId,
         package_id: adPackageId,
         photo_count: requiredPhotoCount,
         winner_position: pickData.pick.winnerIndex + 1,
-        confidence: pickData.pick.confidence,
+        ...(richPick
+          ? { set_quality: richPick.setQuality }
+          : { confidence: pickData.pick.confidence }),
         cached: Boolean(pickData.cached),
         latency_ms: Math.round(performance.now() - startedAt),
         variant: "ad",
@@ -878,9 +926,13 @@ export default function PhotoTestAdPage() {
           aria-labelledby="winner-title"
         >
           <div className={styles.stepCopyBlock}>
-            <span className={styles.stepKicker}>Your winner</span>
+            <span className={styles.stepKicker}>
+              {richPhotoPick?.setQuality === "weak"
+                ? "The honest pick"
+                : "Your winner"}
+            </span>
             <h2 id="winner-title" className={styles.stepTitle}>
-              Put this one first.
+              {richPhotoPick?.headline ?? "Put this one first."}
             </h2>
           </div>
 
@@ -896,8 +948,19 @@ export default function PhotoTestAdPage() {
                 <span>Photo {photoPick.winnerIndex + 1}</span>
               </div>
               <div className={styles.winnerCopy}>
-                <span>Why this one</span>
-                <p>{photoPick.reason}</p>
+                <span>
+                  {richPhotoPick?.setQuality === "weak"
+                    ? "The honest take"
+                    : "Why this one"}
+                </span>
+                {richPhotoPick?.strength ? (
+                  <p className={styles.winnerStrength}>
+                    {richPhotoPick.strength}
+                  </p>
+                ) : null}
+                <p className={styles.winnerDiagnosis}>
+                  {richPhotoPick?.diagnosis ?? photoPick.reason}
+                </p>
               </div>
             </div>
           ) : null}
@@ -913,7 +976,9 @@ export default function PhotoTestAdPage() {
         >
           <div className={styles.stepCopyBlock}>
             <span className={styles.stepKicker}>
-              We found your strongest photo.
+              {richPhotoPick
+                ? "Now put it to the real test."
+                : "We found your strongest photo."}
             </span>
             <h2
               id="score-title"
@@ -922,8 +987,8 @@ export default function PhotoTestAdPage() {
               Now get its real-world swipe score.
             </h2>
             <p className={styles.stepText}>
-              20 real women in your dating range score this one photo out of
-              10, so you know how it actually lands.
+              {richPhotoPick?.bridge ??
+                "20 real women in your dating range score this one photo out of 10, so you know how it actually lands."}
             </p>
           </div>
 
