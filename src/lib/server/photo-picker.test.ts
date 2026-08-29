@@ -66,7 +66,7 @@ describe("photo picker validation", () => {
       diagnosis:
         "The angle is doing you zero favors, and the expression gives nothing.",
       bridge:
-        "It wins this set, but that doesn't mean it lands. See how 20 real women score it.",
+        "Winning this set only makes it your best option. See how 20 real women in your dating range score it.",
     });
 
     expect(
@@ -87,7 +87,7 @@ describe("photo picker validation", () => {
         strength: null,
         diagnosis: "x".repeat(181),
         bridge:
-          "It wins this set, but that doesn't mean it lands. See how 20 real women score it.",
+          "Winning this set only makes it your best option. See how 20 real women in your dating range score it.",
       }),
     ).toBeNull();
     expect(
@@ -193,7 +193,7 @@ describe("photo picker validation", () => {
         strength: null,
         diagnosis: "The angle is doing you zero favors.",
         bridge:
-          "It wins this set, but that doesn't mean it lands. See how 20 real women score it.",
+          "Winning this set only makes it your best option. See how 20 real women in your dating range score it.",
       }),
     ).toMatchObject({
       winnerIndex: 1,
@@ -215,6 +215,17 @@ describe("photo picker validation", () => {
       winnerIndex: 0,
       confidence: "close",
       reason: "Legacy copy survives.",
+    });
+
+    expect(
+      normalizePhotoPickForClient({
+        version: PHOTO_PICKER_VERSION,
+        winnerIndex: 0,
+        confidence: "close",
+        reason: "Strong expression — messy background.",
+      }),
+    ).toMatchObject({
+      reason: "Strong expression, messy background.",
     });
   });
 
@@ -352,7 +363,7 @@ describe("photo picker Responses API contract", () => {
             diagnosis:
               " The angle is doing you zero favors, and the expression gives nothing. ",
             bridge:
-              " It wins this set, but that doesn't mean it lands. See how 20 real women score it. ",
+              " Winning this set only makes it your best option. See how 20 real women in your dating range score it. ",
           }),
         });
       },
@@ -373,7 +384,7 @@ describe("photo picker Responses API contract", () => {
       diagnosis:
         "The angle is doing you zero favors, and the expression gives nothing.",
       bridge:
-        "It wins this set, but that doesn't mean it lands. See how 20 real women score it.",
+        "Winning this set only makes it your best option. See how 20 real women in your dating range score it.",
     });
   });
 

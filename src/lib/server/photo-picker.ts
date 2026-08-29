@@ -11,7 +11,7 @@ const MAX_DIAGNOSIS_LENGTH = 180;
 const MAX_BRIDGE_LENGTH = 180;
 const MAX_REASON_LENGTH = MAX_DIAGNOSIS_LENGTH;
 const WEAK_BRIDGE =
-  "It wins this set, but that doesn't mean it lands. See how 20 real women score it.";
+  "Winning this set only makes it your best option. See how 20 real women in your dating range score it.";
 
 export const PHOTO_PICKER_IMAGE_COUNT = 3;
 export const PHOTO_PICKER_MAX_IMAGE_BYTES = 750 * 1024;
@@ -89,12 +89,13 @@ const PHOTO_PICKER_PROMPT = [
   "- No rizz, aura, no cap, main-character energy, pickup jargon, memes, clinical language, photography jargon, personal insults, or fake predictions.",
   "- Never use generic filler such as approachable, authentic energy, confident energy, solid fundamentals, or strongest potential.",
   "- Never say feels unintentional, dating-profile lead, composition, or facial visibility.",
-  "- Weak bridge exactly: It wins this set, but that doesn't mean it lands. See how 20 real women score it.",
-  "- For usable or strong sets, actual response stays unresolved; naturally invite a score from 20 real women.",
+  "- Never use an em dash.",
+  "- Weak bridge exactly: Winning this set only makes it your best option. See how 20 real women in your dating range score it.",
+  "- For usable or strong sets, make the relative-winner gap explicit, then invite a score from 20 real women in the user's dating range.",
   "- Write directly to the user and never mention AI, a model, or analysis.",
   "",
   "Weak-set example:",
-  '{"bestPhoto":"photo_2","setQuality":"weak","headline":"Photo 2 wins this set. Barely.","strength":null,"diagnosis":"The angle is doing you zero favors, the window light is cooked, and the blank expression makes this look like a random camera-roll selfie.","bridge":"It wins this set, but that doesn\'t mean it lands. See how 20 real women score it."}',
+  '{"bestPhoto":"photo_2","setQuality":"weak","headline":"Photo 2 wins this set. Barely.","strength":null,"diagnosis":"The angle is doing you zero favors, the window light is cooked, and the blank expression makes this look like a random camera-roll selfie.","bridge":"Winning this set only makes it your best option. See how 20 real women in your dating range score it."}',
   "",
   "Before returning, silently verify: if quality is weak and strength is null, diagnosis has zero praise and none of the banned contrast words. Rewrite if needed.",
   "Return only the JSON object.",
@@ -161,7 +162,10 @@ function isPhotoPickerSetQuality(
 
 function normalizedText(value: unknown, maxLength: number) {
   if (typeof value !== "string") return "";
-  const text = value.trim().replace(/\s+/g, " ");
+  const text = value
+    .trim()
+    .replace(/\s*[—–]\s*/g, ", ")
+    .replace(/\s+/g, " ");
   return text && text.length <= maxLength ? text : "";
 }
 

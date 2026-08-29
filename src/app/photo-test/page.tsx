@@ -831,7 +831,8 @@ export default function PhotoTestAdPage() {
               <span className={styles.titleAccent}>5x more matches</span> on Tinder.
             </h1>
             <p className={styles.subcopy}>
-              Stop waiting for matches and wondering if your opener works.
+              Your best dating photo might already be in your camera roll. Stop
+              losing matches to the wrong first photo.
             </p>
           </div>
           {renderComparison()}
@@ -850,10 +851,10 @@ export default function PhotoTestAdPage() {
           <div className={styles.signalPanel} aria-labelledby="fact-title">
             <span>The problem</span>
             <strong id="fact-title">
-              Your favorite pic might not be your <em>best.</em>
+              You can&apos;t see your photos the way <em>women do.</em>
             </strong>
             <p>
-              The photo you like most is not always the one women swipe right on.
+              The pic you like most can be the one quietly costing you matches.
             </p>
           </div>
           <h3 className={styles.fixTitle}>The fix</h3>
@@ -975,11 +976,7 @@ export default function PhotoTestAdPage() {
           aria-labelledby="score-title"
         >
           <div className={styles.stepCopyBlock}>
-            <span className={styles.stepKicker}>
-              {richPhotoPick
-                ? "Now put it to the real test."
-                : "We found your strongest photo."}
-            </span>
+            <span className={styles.stepKicker}>Best of your three.</span>
             <h2
               id="score-title"
               className={`${styles.stepTitle} ${styles.scoreStepTitle}`}
@@ -988,7 +985,7 @@ export default function PhotoTestAdPage() {
             </h2>
             <p className={styles.stepText}>
               {richPhotoPick?.bridge ??
-                "20 real women in your dating range score this one photo out of 10, so you know how it actually lands."}
+                "Winning this set only makes it your best option. See how 20 real women in your dating range score it."}
             </p>
           </div>
 
@@ -1083,7 +1080,7 @@ export default function PhotoTestAdPage() {
               >
                 <span className={styles.checkoutButtonText}>
                   {isSubmitting ? <span className={styles.buttonSpinner} aria-hidden="true" /> : null}
-                  <span>Get my score</span>
+                  <span>Unlock my swipe score</span>
                 </span>
                 <strong>$9</strong>
               </button>
