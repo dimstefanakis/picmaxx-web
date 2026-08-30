@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import {
   extensionForImageType,
   isValidPhotoCount,
@@ -12,7 +14,10 @@ import {
 } from "@/lib/photo-test";
 import { createPaidTestRecord } from "@/lib/server/airtable";
 import { createPhotoTestOrderToken } from "@/lib/server/photo-test-order-token";
-import { getPostHogClient } from "@/lib/posthog-server";
+import {
+  capturePostHogServerEvent,
+  postHogEventUuid,
+} from "@/lib/posthog-server";
 import { createUploadUrl } from "@/lib/server/r2";
 
 export const runtime = "nodejs";
@@ -28,6 +33,8 @@ type InitBody = {
   fbc?: unknown;
   ttp?: unknown;
   ttclid?: unknown;
+  posthogDistinctId?: unknown;
+  posthogSessionId?: unknown;
   returnPath?: unknown;
 };
 
@@ -133,6 +140,9 @@ export async function POST(request: Request) {
     const fbc = String(body.fbc ?? "");
     const ttp = attributionValue(body.ttp, 500);
     const ttclid = attributionValue(body.ttclid, 1000);
+    const posthogDistinctId =
+      attributionValue(body.posthogDistinctId, 200) || email || id;
+    const posthogSessionId = attributionValue(body.posthogSessionId, 200);
     const userAgent = request.headers.get("user-agent") ?? "";
     const ipAddress = clientIp(request.headers);
     const recordFields = {
@@ -168,22 +178,30 @@ export async function POST(request: Request) {
       fbc,
       ttp,
       ttclid,
+      posthogDistinctId,
+      posthogSessionId,
       userAgent,
       ipAddress,
       returnPath,
       expiresAt: Date.now() + 60 * 60 * 1000,
     });
 
-    getPostHogClient().capture({
-      distinctId: email || id,
-      event: "photo_test_order_created",
-      properties: {
-        order_id: id,
-        package_id: body.packageId,
-        ...(voterAgeRange ? { voter_age_range: voterAgeRange } : {}),
-        photo_count: files.length,
-        source_url: sourceUrl,
-      },
+    after(() => {
+      return capturePostHogServerEvent({
+        distinctId: posthogDistinctId,
+        event: "photo_test_order_created",
+        uuid: postHogEventUuid("photo-test-order-created", id),
+        properties: {
+          $insert_id: `photo-test-order-${id}`,
+          order_id: id,
+          package_id: body.packageId,
+          ...(voterAgeRange ? { voter_age_range: voterAgeRange } : {}),
+          photo_count: files.length,
+          source_url: sourceUrl,
+          variant: returnPath === "/photo-test" ? "ad" : "generic",
+          ...(posthogSessionId ? { $session_id: posthogSessionId } : {}),
+        },
+      });
     });
 
     return Response.json({

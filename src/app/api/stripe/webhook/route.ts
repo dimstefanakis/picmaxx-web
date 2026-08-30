@@ -10,7 +10,10 @@ import {
 import { updatePaidTestRecord } from "@/lib/server/airtable";
 import { requiredEnv, siteUrl } from "@/lib/server/env";
 import { sendMetaPurchaseEvent } from "@/lib/server/meta";
-import { getPostHogClient } from "@/lib/posthog-server";
+import {
+  capturePostHogServerEvent,
+  postHogEventUuid,
+} from "@/lib/posthog-server";
 import { stripeClient } from "@/lib/server/stripe";
 import { sendTikTokPurchaseEvent } from "@/lib/server/tiktok";
 import { joinTikTokClickIdFromMetadata } from "@/lib/tiktok";
@@ -82,16 +85,39 @@ export async function POST(request: Request) {
     ...(purchaseEmail ? { Email: purchaseEmail } : {}),
   });
 
-  getPostHogClient().capture({
-    distinctId: purchaseEmail || orderId,
-    event: "photo_test_purchase_confirmed",
-    properties: {
-      order_id: orderId,
-      stripe_session_id: session.id,
-      package_id: packageId,
-      amount_cents: PHOTO_TEST_PRICE_CENTS,
-      currency: PHOTO_TEST_CURRENCY,
-    },
+  const amountCents = session.amount_total ?? PHOTO_TEST_PRICE_CENTS;
+  const currency = (session.currency ?? PHOTO_TEST_CURRENCY).toUpperCase();
+
+  after(() => {
+    return capturePostHogServerEvent({
+      distinctId:
+        fieldString(session.metadata?.posthogDistinctId) || orderId,
+      event: "purchase_completed",
+      uuid:
+        fieldString(session.metadata?.purchaseEventUuid) ||
+        postHogEventUuid("photo-test-purchase", orderId),
+      properties: {
+        $insert_id: `photo-test-purchase-${session.id}`,
+        order_id: orderId,
+        stripe_session_id: session.id,
+        package_id: packageId,
+        amount_cents: amountCents,
+        value: amountCents / 100,
+        currency,
+        voter_age_range: fieldString(session.metadata?.voterAgeRange),
+        selected_photo_position: fieldString(
+          session.metadata?.selectedPhotoPosition,
+        ),
+        source: "stripe_webhook",
+        variant:
+          fieldString(session.metadata?.selectedPhotoPosition) !== ""
+            ? "ad"
+            : "generic",
+        ...(fieldString(session.metadata?.posthogSessionId)
+          ? { $session_id: fieldString(session.metadata?.posthogSessionId) }
+          : {}),
+      },
+    });
   });
 
   const email = purchaseEmail;
@@ -106,8 +132,8 @@ export async function POST(request: Request) {
         fbp: fieldString(session.metadata?.fbp),
         fbc: fieldString(session.metadata?.fbc),
         packageId,
-        amountCents: PHOTO_TEST_PRICE_CENTS,
-        currency: PHOTO_TEST_CURRENCY,
+        amountCents,
+        currency: currency.toLowerCase(),
       });
 
       await updatePaidTestRecord(airtableRecordId, {
@@ -143,8 +169,8 @@ export async function POST(request: Request) {
         contentName: isPhotoTestPackageId(packageId)
           ? photoTestPackages[packageId].title
           : "Picmaxx Paid Photo Test",
-        amountCents: PHOTO_TEST_PRICE_CENTS,
-        currency: PHOTO_TEST_CURRENCY,
+        amountCents,
+        currency: currency.toLowerCase(),
       });
     } catch (error) {
       console.error(error);

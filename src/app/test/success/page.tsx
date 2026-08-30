@@ -20,6 +20,7 @@ type PaidPurchase = {
   ok: true;
   paid: true;
   eventId: string;
+  purchaseEventUuid: string;
   packageId: string;
   contentName: string;
   amountCents: number;
@@ -33,31 +34,53 @@ export default function PhotoTestSuccessPage() {
     if (!orderId || !sessionId) return;
 
     let cancelled = false;
-    let retryTimeout: number | undefined;
+    let pixelRetryTimeout: number | undefined;
+    let purchaseStatusTimeout: number | undefined;
+    const maxPurchaseStatusAttempts = 6;
 
-    async function verifyAndTrackPurchase() {
+    async function verifyAndTrackPurchase(attempt = 1) {
       try {
         const response = await fetch("/api/photo-tests/purchase-status", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ orderId, sessionId }),
         });
-        if (!response.ok) return;
+        if (!response.ok) throw new Error("Purchase status unavailable");
 
         const purchase = (await response.json()) as
           | PaidPurchase
           | { ok: true; paid: false };
-        if (cancelled || !purchase.paid) return;
+        if (cancelled) return;
+        if (!purchase.paid) {
+          if (attempt < maxPurchaseStatusAttempts) {
+            purchaseStatusTimeout = window.setTimeout(
+              () => void verifyAndTrackPurchase(attempt + 1),
+              750,
+            );
+          }
+          return;
+        }
         const paidPurchase: PaidPurchase = purchase;
 
         const posthogStorageKey = `picmaxx_posthog_purchase_${paidPurchase.eventId}`;
         if (!window.sessionStorage.getItem(posthogStorageKey)) {
-          posthog.capture("purchase_completed", {
-            order_id: paidPurchase.eventId,
-            package_id: paidPurchase.packageId,
-            value: paidPurchase.amountCents / 100,
-            currency: paidPurchase.currency.toUpperCase(),
-          });
+          posthog.capture(
+            "purchase_completed",
+            {
+              $insert_id: `photo-test-purchase-${sessionId}`,
+              order_id: paidPurchase.eventId,
+              stripe_session_id: sessionId,
+              package_id: paidPurchase.packageId,
+              amount_cents: paidPurchase.amountCents,
+              value: paidPurchase.amountCents / 100,
+              currency: paidPurchase.currency.toUpperCase(),
+              source: "success_page",
+            },
+            {
+              uuid: paidPurchase.purchaseEventUuid,
+              send_instantly: true,
+            },
+          );
           window.sessionStorage.setItem(posthogStorageKey, "1");
         }
 
@@ -109,20 +132,35 @@ export default function PhotoTestSuccessPage() {
 
           if (retries < 20) {
             retries += 1;
-            retryTimeout = window.setTimeout(trackPurchase, 250);
+            pixelRetryTimeout = window.setTimeout(trackPurchase, 250);
           }
         }
 
         trackPurchase();
-      } catch {
-        // The signed Stripe webhook remains the source of truth for purchase tracking.
+      } catch (error) {
+        if (cancelled) return;
+        if (attempt < maxPurchaseStatusAttempts) {
+          purchaseStatusTimeout = window.setTimeout(
+            () => void verifyAndTrackPurchase(attempt + 1),
+            750,
+          );
+          return;
+        }
+        posthog.capture("purchase_status_check_failed", {
+          order_id: orderId,
+          stripe_session_id: sessionId,
+          attempts: attempt,
+          error_message:
+            error instanceof Error ? error.message : "Purchase status unavailable",
+        });
       }
     }
 
     void verifyAndTrackPurchase();
     return () => {
       cancelled = true;
-      if (retryTimeout) window.clearTimeout(retryTimeout);
+      if (pixelRetryTimeout) window.clearTimeout(pixelRetryTimeout);
+      if (purchaseStatusTimeout) window.clearTimeout(purchaseStatusTimeout);
     };
   }, []);
 

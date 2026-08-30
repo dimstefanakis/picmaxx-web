@@ -1,4 +1,6 @@
-import { PostHog } from "posthog-node";
+import { createHash } from "node:crypto";
+
+import { PostHog, type EventMessage } from "posthog-node";
 
 let posthogClient: PostHog | null = null;
 
@@ -27,8 +29,29 @@ export function getPostHogClient() {
   return posthogClient;
 }
 
-export async function shutdownPostHog() {
-  if (posthogClient) {
-    await posthogClient.shutdown();
+export async function capturePostHogServerEvent(message: EventMessage) {
+  try {
+    await getPostHogClient().captureImmediate(message);
+  } catch (error) {
+    console.error("Could not send PostHog server event.", error);
   }
+}
+
+export function postHogEventUuid(namespace: string, id: string) {
+  const bytes = createHash("sha256")
+    .update(`${namespace}:${id}`)
+    .digest()
+    .subarray(0, 16);
+
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = bytes.toString("hex");
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20),
+  ].join("-");
 }

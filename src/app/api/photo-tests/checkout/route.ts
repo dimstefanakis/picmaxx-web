@@ -12,7 +12,10 @@ import {
 import { updatePaidTestRecord } from "@/lib/server/airtable";
 import { siteUrl } from "@/lib/server/env";
 import { sendMetaInitiateCheckoutEvent } from "@/lib/server/meta";
-import { getPostHogClient } from "@/lib/posthog-server";
+import {
+  capturePostHogServerEvent,
+  postHogEventUuid,
+} from "@/lib/posthog-server";
 import {
   normalizePhotoPickForClient,
   photoPickerCacheKey,
@@ -130,6 +133,14 @@ export async function POST(request: Request) {
       initiateCheckoutEventId,
       selectedPhotoPosition,
       selectedR2Key: metadataString(selectedR2Key),
+      posthogDistinctId: metadataString(
+        order.posthogDistinctId || order.email || order.orderId,
+      ),
+      posthogSessionId: metadataString(order.posthogSessionId ?? ""),
+      purchaseEventUuid: postHogEventUuid(
+        "photo-test-purchase",
+        order.orderId,
+      ),
     };
 
     if (isAdFlow && voterAgeRange && selectedR2Key) {
@@ -141,31 +152,34 @@ export async function POST(request: Request) {
       });
     }
 
-    const session = await stripeClient().checkout.sessions.create({
-      mode: "payment",
-      ...(order.email ? { customer_email: order.email } : {}),
-      client_reference_id: order.orderId,
-      submit_type: "pay",
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: PHOTO_TEST_CURRENCY,
-            unit_amount: PHOTO_TEST_PRICE_CENTS,
-            product_data: {
-              name: stripeName,
-              description: resultCopy,
+    const session = await stripeClient().checkout.sessions.create(
+      {
+        mode: "payment",
+        ...(order.email ? { customer_email: order.email } : {}),
+        client_reference_id: order.orderId,
+        submit_type: "pay",
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: PHOTO_TEST_CURRENCY,
+              unit_amount: PHOTO_TEST_PRICE_CENTS,
+              product_data: {
+                name: stripeName,
+                description: resultCopy,
+              },
             },
           },
-        },
-      ],
-      metadata,
-      payment_intent_data: {
+        ],
         metadata,
+        payment_intent_data: {
+          metadata,
+        },
+        success_url: `${origin}/test/success?order=${encodeURIComponent(order.orderId)}&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin}${cancelPath}?order=${encodeURIComponent(order.orderId)}`,
       },
-      success_url: `${origin}/test/success?order=${encodeURIComponent(order.orderId)}&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}${cancelPath}?order=${encodeURIComponent(order.orderId)}`,
-    });
+      { idempotencyKey: `photo-test-checkout-v1:${order.orderId}` },
+    );
 
     await updatePaidTestRecord(order.airtableRecordId, {
       Status: "checkout_started",
@@ -194,28 +208,50 @@ export async function POST(request: Request) {
       }
     });
 
-    await sendMetaInitiateCheckoutEvent({
-      email: order.email,
-      eventId: initiateCheckoutEventId,
-      sourceUrl: order.sourceUrl,
-      userAgent: order.userAgent,
-      ipAddress: order.ipAddress,
-      fbp: order.fbp,
-      fbc: order.fbc,
-      packageId: order.packageId,
-      amountCents: PHOTO_TEST_PRICE_CENTS,
-      currency: PHOTO_TEST_CURRENCY,
-    })
-      .catch((error) => console.error(error));
+    after(async () => {
+      try {
+        await sendMetaInitiateCheckoutEvent({
+          email: order.email,
+          eventId: initiateCheckoutEventId,
+          sourceUrl: order.sourceUrl,
+          userAgent: order.userAgent,
+          ipAddress: order.ipAddress,
+          fbp: order.fbp,
+          fbc: order.fbc,
+          packageId: order.packageId,
+          amountCents: PHOTO_TEST_PRICE_CENTS,
+          currency: PHOTO_TEST_CURRENCY,
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    });
 
-    getPostHogClient().capture({
-      distinctId: order.email || order.orderId,
-      event: "photo_test_checkout_started",
-      properties: {
-        order_id: order.orderId,
-        package_id: order.packageId,
-        stripe_session_id: session.id,
-      },
+    after(() => {
+      return capturePostHogServerEvent({
+        distinctId:
+          order.posthogDistinctId || order.email || order.orderId,
+        event: "photo_test_checkout_started",
+        uuid: postHogEventUuid(
+          "photo-test-checkout-started",
+          order.orderId,
+        ),
+        properties: {
+          $insert_id: `photo-test-checkout-${session.id}`,
+          order_id: order.orderId,
+          package_id: order.packageId,
+          stripe_session_id: session.id,
+          amount_cents: PHOTO_TEST_PRICE_CENTS,
+          value: PHOTO_TEST_PRICE_CENTS / 100,
+          currency: PHOTO_TEST_CURRENCY.toUpperCase(),
+          voter_age_range: voterAgeRange,
+          selected_photo_position: selectedPhotoPosition || undefined,
+          variant: isAdFlow ? "ad" : "generic",
+          ...(order.posthogSessionId
+            ? { $session_id: order.posthogSessionId }
+            : {}),
+        },
+      });
     });
 
     return Response.json({

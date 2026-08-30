@@ -19,6 +19,8 @@ export type PhotoTestOrderTokenPayload = {
   fbc: string;
   ttp?: string;
   ttclid?: string;
+  posthogDistinctId?: string;
+  posthogSessionId?: string;
   userAgent: string;
   ipAddress: string;
   returnPath?: string;

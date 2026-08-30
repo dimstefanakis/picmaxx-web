@@ -4,6 +4,7 @@ import {
   isPhotoTestPackageId,
   photoTestPackages,
 } from "@/lib/photo-test";
+import { postHogEventUuid } from "@/lib/posthog-server";
 import { stripeClient } from "@/lib/server/stripe";
 
 export const runtime = "nodejs";
@@ -58,6 +59,9 @@ export async function POST(request: Request) {
       ok: true,
       paid: true,
       eventId: orderId,
+      purchaseEventUuid:
+        session.metadata?.purchaseEventUuid ||
+        postHogEventUuid("photo-test-purchase", orderId),
       packageId,
       contentName: photoTestPackages[packageId].title,
       amountCents: session.amount_total ?? PHOTO_TEST_PRICE_CENTS,

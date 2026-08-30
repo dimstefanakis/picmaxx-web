@@ -23,6 +23,12 @@ import {
   voterAgeRanges,
 } from "@/lib/photo-test";
 import {
+  PhotoUploadError,
+  isPhotoUploadCancelled,
+  pendingPhotoIndexes,
+  uploadPhotoWithRetry,
+} from "@/lib/client/photo-test-upload";
+import {
   createTikTokCommerceProperties,
   getTikTokBrowserIdentifiers,
   trackTikTokEvent,
@@ -76,6 +82,56 @@ type PhotoPickResponse = {
 };
 
 type StepId = "intro" | "how" | "upload" | "winner" | "range";
+type PipelineStage =
+  | "idle"
+  | "creating_order"
+  | "uploading"
+  | "preparing_photos"
+  | "picking";
+type FlowFailureStage =
+  | "photo_validation"
+  | "photo_preparation"
+  | "order_init"
+  | "r2_upload"
+  | "analysis_copy"
+  | "picker_request"
+  | "picker_response"
+  | "checkout_validation"
+  | "checkout";
+
+type UploadSession = {
+  response: UploadResponse;
+  completedIndexes: Set<number>;
+  retryCount: number;
+};
+
+class PhotoTestFlowError extends Error {
+  readonly stage: FlowFailureStage;
+  readonly code: string;
+  readonly status?: number;
+  readonly retryable: boolean;
+
+  constructor({
+    message,
+    stage,
+    code,
+    status,
+    retryable = false,
+  }: {
+    message: string;
+    stage: FlowFailureStage;
+    code: string;
+    status?: number;
+    retryable?: boolean;
+  }) {
+    super(message);
+    this.name = "PhotoTestFlowError";
+    this.stage = stage;
+    this.code = code;
+    this.status = status;
+    this.retryable = retryable;
+  }
+}
 
 const returnPath = "/photo-test";
 const adPackageId: PhotoTestPackageId = "best_of_three";
@@ -125,6 +181,10 @@ function randomId() {
     const value = character === "x" ? random : (random & 0x3) | 0x8;
     return value.toString(16);
   });
+}
+
+function nowMs() {
+  return performance.now();
 }
 
 function canvasToJpeg(canvas: HTMLCanvasElement, quality: number) {
@@ -301,6 +361,42 @@ function hasPhotoPickNarrative(
   return "setQuality" in pick;
 }
 
+function flowFailureDetails(
+  error: unknown,
+  fallbackStage: FlowFailureStage,
+) {
+  if (error instanceof PhotoUploadError) {
+    return {
+      stage: "r2_upload" as const,
+      code: error.code,
+      status: error.status,
+      retryable: error.retryable,
+      attempt: error.attempt,
+      photoPosition: error.photoPosition,
+    };
+  }
+
+  if (error instanceof PhotoTestFlowError) {
+    return {
+      stage: error.stage,
+      code: error.code,
+      status: error.status,
+      retryable: error.retryable,
+      attempt: undefined,
+      photoPosition: undefined,
+    };
+  }
+
+  return {
+    stage: fallbackStage,
+    code: `${fallbackStage}_failed`,
+    status: undefined,
+    retryable: false,
+    attempt: undefined,
+    photoPosition: undefined,
+  };
+}
+
 export default function PhotoTestAdPage() {
   const [activeStep, setActiveStep] = useState<StepId>("intro");
   const [voterAgeRange, setVoterAgeRange] = useState<VoterAgeRange>("25-34");
@@ -317,6 +413,11 @@ export default function PhotoTestAdPage() {
   const [photoPick, setPhotoPick] = useState<PhotoPick | null>(null);
   const [photosBeingPrepared, setPhotosBeingPrepared] = useState(0);
   const [isPreparingPick, setIsPreparingPick] = useState(false);
+  const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
+  const [uploadProgress, setUploadProgress] = useState({
+    completed: 0,
+    total: requiredPhotoCount,
+  });
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -324,6 +425,8 @@ export default function PhotoTestAdPage() {
   const preparingPickRef = useRef(false);
   const selectionVersionRef = useRef(0);
   const photoSelectionRef = useRef([0, 0, 0]);
+  const uploadSessionRef = useRef<UploadSession | null>(null);
+  const activePipelineControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     photosRef.current = photos;
@@ -331,6 +434,7 @@ export default function PhotoTestAdPage() {
 
   useEffect(() => {
     return () => {
+      activePipelineControllerRef.current?.abort();
       photosRef.current.forEach((photo) => {
         if (photo) URL.revokeObjectURL(photo.previewUrl);
       });
@@ -352,13 +456,80 @@ export default function PhotoTestAdPage() {
   const winningPhoto = photoPick ? photos[photoPick.winnerIndex] : null;
   const richPhotoPick =
     photoPick && hasPhotoPickNarrative(photoPick) ? photoPick : null;
+  const uploadCtaDisabled =
+    activeStep === "upload" && readyCount !== requiredPhotoCount;
+  const pipelineStatusCopy =
+    pipelineStage === "creating_order"
+      ? "Starting upload..."
+      : pipelineStage === "uploading"
+        ? `Uploading ${uploadProgress.completed} of ${uploadProgress.total}...`
+        : pipelineStage === "preparing_photos"
+          ? "Preparing your photos..."
+          : pipelineStage === "picking"
+            ? "Picking your best..."
+            : "";
+
+  useEffect(() => {
+    posthog.capture("photo_test_step_viewed", {
+      step: activeStep,
+      step_number: activeStepIndex + 1,
+      package_id: adPackageId,
+      variant: "ad",
+    });
+  }, [activeStep, activeStepIndex]);
+
+  function captureFlowFailure({
+    stage,
+    code,
+    status,
+    retryable,
+    attempt,
+    photoPosition,
+    orderIdOverride,
+    elapsedMs,
+  }: {
+    stage: FlowFailureStage;
+    code: string;
+    status?: number;
+    retryable?: boolean;
+    attempt?: number;
+    photoPosition?: number;
+    orderIdOverride?: string;
+    elapsedMs?: number;
+  }) {
+    posthog.capture("photo_test_flow_failed", {
+      step: activeStep,
+      failure_stage: stage,
+      failure_code: code,
+      package_id: adPackageId,
+      variant: "ad",
+      ...(orderIdOverride || orderId
+        ? { order_id: orderIdOverride || orderId }
+        : {}),
+      ...(status === undefined ? {} : { http_status: status }),
+      ...(retryable === undefined ? {} : { retryable }),
+      ...(attempt === undefined ? {} : { attempt }),
+      ...(photoPosition === undefined
+        ? {}
+        : { photo_position: photoPosition }),
+      ...(elapsedMs === undefined ? {} : { elapsed_ms: elapsedMs }),
+    });
+  }
+
+  function resetUploadSession() {
+    uploadSessionRef.current = null;
+    setUploadProgress({ completed: 0, total: requiredPhotoCount });
+  }
 
   function invalidatePreparedPick() {
     selectionVersionRef.current += 1;
+    activePipelineControllerRef.current?.abort();
+    resetUploadSession();
     setOrderId("");
     setOrderToken("");
     setOriginalsUploaded(false);
     setPhotoPick(null);
+    setPipelineStage("idle");
   }
 
   function chooseAgeRange(nextRange: VoterAgeRange) {
@@ -410,6 +581,12 @@ export default function PhotoTestAdPage() {
     const validation = validatePhotoMeta(normalized);
     if (!validation.ok) {
       setError(validation.error);
+      captureFlowFailure({
+        stage: "photo_validation",
+        code: "photo_metadata_invalid",
+        retryable: false,
+        photoPosition: index + 1,
+      });
       return;
     }
 
@@ -429,6 +606,12 @@ export default function PhotoTestAdPage() {
       });
       if (!preparedValidation.ok) {
         setError(preparedValidation.error);
+        captureFlowFailure({
+          stage: "photo_validation",
+          code: "prepared_photo_invalid",
+          retryable: false,
+          photoPosition: index + 1,
+        });
         return;
       }
 
@@ -457,6 +640,14 @@ export default function PhotoTestAdPage() {
             ? photoError.message
             : "Could not prepare this photo.",
         );
+        captureFlowFailure({
+          stage: "photo_preparation",
+          code: isHeicPhoto(file)
+            ? "heic_conversion_failed"
+            : "photo_preparation_failed",
+          retryable: true,
+          photoPosition: index + 1,
+        });
       }
     } finally {
       setPhotosBeingPrepared((current) => Math.max(0, current - 1));
@@ -466,6 +657,11 @@ export default function PhotoTestAdPage() {
   function removePhoto(index: number) {
     photoSelectionRef.current[index] += 1;
     invalidatePreparedPick();
+    posthog.capture("photo_test_photo_removed", {
+      photo_position: index + 1,
+      package_id: adPackageId,
+      variant: "ad",
+    });
     setPhotos((current) => {
       const next = [...current];
       const previous = next[index];
@@ -480,18 +676,35 @@ export default function PhotoTestAdPage() {
     if (isFirstStep || isPreparingPhoto || isPreparingPick || isSubmitting) {
       return;
     }
+    const previousStep = stepOrder[activeStepIndex - 1];
+    posthog.capture("photo_test_back_clicked", {
+      step: activeStep,
+      previous_step: previousStep,
+      package_id: adPackageId,
+      variant: "ad",
+    });
     setError("");
-    setActiveStep(stepOrder[activeStepIndex - 1]);
+    setActiveStep(previousStep);
   }
 
   function goNext(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
+    const nextStep =
+      activeStep === "upload"
+        ? "winner"
+        : stepOrder[activeStepIndex + 1];
+    posthog.capture("photo_test_cta_clicked", {
+      step: activeStep,
+      next_step: nextStep,
+      cta_label: nextLabelByStep[activeStep],
+      package_id: adPackageId,
+      variant: "ad",
+    });
     if (activeStep === "upload") {
       void preparePhotoPick();
       return;
     }
 
-    const nextStep = stepOrder[activeStepIndex + 1];
     if (!nextStep) return;
     setError("");
     setActiveStep(nextStep);
@@ -507,56 +720,210 @@ export default function PhotoTestAdPage() {
     return "";
   }
 
-  async function createAndUploadOrder(finalPhotos: SelectedPhoto[]) {
-    const { ttp, ttclid } = getTikTokBrowserIdentifiers();
-    const initResponse = await fetch("/api/photo-tests/init", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        packageId: adPackageId,
-        files: finalPhotos.map(({ file }) => ({
-          name: file.name,
-          type: inferImageType(file.name, file.type),
-          size: file.size,
-        })),
-        sourceUrl: window.location.href,
-        referrer: document.referrer,
-        fbp: getCookie("_fbp"),
-        fbc: getCookie("_fbc"),
-        ttp,
-        ttclid,
-        returnPath,
-      }),
-    });
+  async function createAndUploadOrder(
+    finalPhotos: SelectedPhoto[],
+    signal: AbortSignal,
+  ) {
+    let session = uploadSessionRef.current;
 
-    if (!initResponse.ok) throw new Error(await parseError(initResponse));
-    const initData = (await initResponse.json()) as UploadResponse;
-    if (initData.uploads.length !== requiredPhotoCount) {
-      throw new Error("Photo upload could not start. Try again.");
+    if (!session) {
+      setPipelineStage("creating_order");
+      const { ttp, ttclid } = getTikTokBrowserIdentifiers();
+      let initResponse: Response;
+
+      try {
+        initResponse = await fetch("/api/photo-tests/init", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            packageId: adPackageId,
+            files: finalPhotos.map(({ file }) => ({
+              name: file.name,
+              type: inferImageType(file.name, file.type),
+              size: file.size,
+            })),
+            sourceUrl: window.location.href,
+            referrer: document.referrer,
+            fbp: getCookie("_fbp"),
+            fbc: getCookie("_fbc"),
+            ttp,
+            ttclid,
+            posthogDistinctId: posthog.get_distinct_id(),
+            posthogSessionId: posthog.get_session_id(),
+            returnPath,
+          }),
+          signal,
+        });
+      } catch (initError) {
+        if (signal.aborted) throw initError;
+        throw new PhotoTestFlowError({
+          message: "Could not start photo upload. Try again.",
+          stage: "order_init",
+          code: "order_init_network",
+          retryable: true,
+        });
+      }
+
+      if (!initResponse.ok) {
+        throw new PhotoTestFlowError({
+          message: await parseError(initResponse),
+          stage: "order_init",
+          code: "order_init_http",
+          status: initResponse.status,
+          retryable: initResponse.status >= 500,
+        });
+      }
+
+      let initData: UploadResponse;
+      try {
+        initData = (await initResponse.json()) as UploadResponse;
+      } catch {
+        throw new PhotoTestFlowError({
+          message: "Photo upload could not start. Try again.",
+          stage: "order_init",
+          code: "order_init_response_invalid",
+        });
+      }
+
+      if (initData.uploads.length !== requiredPhotoCount) {
+        throw new PhotoTestFlowError({
+          message: "Photo upload could not start. Try again.",
+          stage: "order_init",
+          code: "upload_descriptors_incomplete",
+        });
+      }
+
+      session = {
+        response: initData,
+        completedIndexes: new Set<number>(),
+        retryCount: 0,
+      };
+      uploadSessionRef.current = session;
+      setOrderId(initData.orderId);
+      setOrderToken(initData.orderToken);
+      setOriginalsUploaded(false);
     }
 
-    await Promise.all(
-      finalPhotos.map(({ file }, index) => {
-        const upload = initData.uploads[index];
-        return fetch(upload.uploadUrl, {
-          method: "PUT",
-          headers: upload.headers,
-          body: file,
-        }).then((response) => {
-          if (!response.ok) throw new Error("Photo upload failed. Try again.");
-        });
-      }),
+    const activeSession = session;
+    const pendingIndexes = pendingPhotoIndexes(
+      finalPhotos.length,
+      activeSession.completedIndexes,
     );
+    setUploadProgress({
+      completed: activeSession.completedIndexes.size,
+      total: requiredPhotoCount,
+    });
 
-    return initData;
+    if (pendingIndexes.length > 0) {
+      setPipelineStage("uploading");
+      const uploadStartedAt = nowMs();
+      const retryCountAtStart = activeSession.retryCount;
+      posthog.capture("photo_test_upload_started", {
+        order_id: activeSession.response.orderId,
+        photo_count: requiredPhotoCount,
+        pending_count: pendingIndexes.length,
+        completed_count: activeSession.completedIndexes.size,
+        total_bytes: finalPhotos.reduce(
+          (total, photo) => total + photo.file.size,
+          0,
+        ),
+        resumed: activeSession.completedIndexes.size > 0,
+        package_id: adPackageId,
+        variant: "ad",
+      });
+
+      const uploadResults = await Promise.allSettled(
+        pendingIndexes.map(async (index) => {
+          const upload = activeSession.response.uploads[index];
+          const photo = finalPhotos[index];
+          if (!upload || !photo) {
+            throw new PhotoTestFlowError({
+              message: "Photo upload could not start. Try again.",
+              stage: "r2_upload",
+              code: "upload_descriptor_missing",
+            });
+          }
+
+          await uploadPhotoWithRetry({
+            descriptor: upload,
+            file: photo.file,
+            photoPosition: index + 1,
+            signal,
+            onRetry: (failure) => {
+              activeSession.retryCount += 1;
+              posthog.capture("photo_test_upload_retried", {
+                order_id: activeSession.response.orderId,
+                photo_position: index + 1,
+                attempt: failure.attempt,
+                next_attempt: failure.attempt + 1,
+                failure_code: failure.code,
+                ...(failure.status === undefined
+                  ? {}
+                  : { http_status: failure.status }),
+                package_id: adPackageId,
+                variant: "ad",
+              });
+            },
+          });
+
+          if (signal.aborted || uploadSessionRef.current !== activeSession) {
+            throw new Error("Photo upload cancelled.");
+          }
+
+          activeSession.completedIndexes.add(index);
+          setUploadProgress({
+            completed: activeSession.completedIndexes.size,
+            total: requiredPhotoCount,
+          });
+        }),
+      );
+
+      if (signal.aborted || uploadSessionRef.current !== activeSession) {
+        throw new Error("Photo upload cancelled.");
+      }
+
+      const rejectedUpload = uploadResults.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      if (rejectedUpload) {
+        if (
+          rejectedUpload.reason instanceof PhotoUploadError &&
+          !rejectedUpload.reason.retryable
+        ) {
+          resetUploadSession();
+          setOrderId("");
+          setOrderToken("");
+          setOriginalsUploaded(false);
+        }
+        throw rejectedUpload.reason;
+      }
+
+      posthog.capture("photo_test_upload_completed", {
+        order_id: activeSession.response.orderId,
+        photo_count: requiredPhotoCount,
+        retry_count: activeSession.retryCount - retryCountAtStart,
+        duration_ms: Math.round(nowMs() - uploadStartedAt),
+        package_id: adPackageId,
+        variant: "ad",
+      });
+    }
+
+    setOriginalsUploaded(true);
+    return activeSession.response;
   }
 
   async function preparePhotoPick() {
     if (preparingPickRef.current) return;
     if (readyCount !== requiredPhotoCount) {
       setError("Add all 3 photos.");
+      captureFlowFailure({
+        stage: "photo_validation",
+        code: "three_photos_required",
+        retryable: false,
+      });
       return;
     }
     if (photoPick && orderToken && originalsUploaded) {
@@ -570,57 +937,73 @@ export default function PhotoTestAdPage() {
     );
     if (finalPhotos.length !== requiredPhotoCount) {
       setError("Add all 3 photos.");
+      captureFlowFailure({
+        stage: "photo_validation",
+        code: "three_photos_required",
+        retryable: false,
+      });
       return;
     }
 
     const selectionVersion = selectionVersionRef.current;
-    const startedAt = performance.now();
+    const startedAt = nowMs();
     let attemptedOrderId = orderId;
+    let pickId = "";
+    let failureStage: FlowFailureStage = "order_init";
+    const pipelineController = new AbortController();
+    activePipelineControllerRef.current = pipelineController;
     preparingPickRef.current = true;
     setError("");
     setIsPreparingPick(true);
 
     try {
-      const analysisPromise = Promise.all(
-        finalPhotos.map(({ file }) => createAnalysisCopy(file)),
-      );
-      const uploadPromise =
+      const uploadResult =
         orderToken && orderId && originalsUploaded
-          ? Promise.resolve({ orderId, orderToken })
-          : createAndUploadOrder(finalPhotos);
-      const [analysisResult, uploadResult] = await Promise.allSettled([
-        analysisPromise,
-        uploadPromise,
-      ]);
+          ? { orderId, orderToken }
+          : await createAndUploadOrder(
+              finalPhotos,
+              pipelineController.signal,
+            );
 
       if (selectionVersion !== selectionVersionRef.current) return;
 
-      if (uploadResult.status === "rejected") {
-        setOrderId("");
-        setOrderToken("");
-        setOriginalsUploaded(false);
-        throw uploadResult.reason;
-      }
-
-      const nextOrderId = uploadResult.value.orderId;
-      const nextOrderToken = uploadResult.value.orderToken;
+      const nextOrderId = uploadResult.orderId;
+      const nextOrderToken = uploadResult.orderToken;
       attemptedOrderId = nextOrderId;
       setOrderId(nextOrderId);
       setOrderToken(nextOrderToken);
       setOriginalsUploaded(true);
 
-      if (analysisResult.status === "rejected") {
-        throw analysisResult.reason;
+      failureStage = "analysis_copy";
+      setPipelineStage("preparing_photos");
+      let analysisImages: Blob[];
+      try {
+        analysisImages = await Promise.all(
+          finalPhotos.map(({ file }) => createAnalysisCopy(file)),
+        );
+      } catch (analysisError) {
+        throw new PhotoTestFlowError({
+          message:
+            analysisError instanceof Error
+              ? analysisError.message
+              : "Could not prepare these photos. Try again.",
+          stage: "analysis_copy",
+          code: "analysis_copy_failed",
+          retryable: true,
+        });
       }
+      if (pipelineController.signal.aborted) return;
 
-      const pickId = randomId();
+      pickId = randomId();
       const formData = new FormData();
       formData.set("orderToken", nextOrderToken);
       formData.set("pickId", pickId);
-      analysisResult.value.forEach((image, index) => {
+      analysisImages.forEach((image, index) => {
         formData.append("images", image, `photo-${index + 1}.jpg`);
       });
 
+      failureStage = "picker_request";
+      setPipelineStage("picking");
       posthog.capture("ai_pick_requested", {
         order_id: nextOrderId,
         pick_id: pickId,
@@ -629,26 +1012,64 @@ export default function PhotoTestAdPage() {
         variant: "ad",
       });
 
-      const pickResponse = await fetch("/api/photo-tests/pick", {
-        method: "POST",
-        body: formData,
-      });
+      let pickResponse: Response;
+      try {
+        pickResponse = await fetch("/api/photo-tests/pick", {
+          method: "POST",
+          body: formData,
+          signal: pipelineController.signal,
+        });
+      } catch (pickError) {
+        if (pipelineController.signal.aborted) throw pickError;
+        throw new PhotoTestFlowError({
+          message: "Could not pick a photo right now. Try again.",
+          stage: "picker_request",
+          code: "picker_network",
+          retryable: true,
+        });
+      }
       if (!pickResponse.ok) {
         if (
           pickResponse.status === 400 ||
           pickResponse.status === 401 ||
           pickResponse.status === 410
         ) {
+          resetUploadSession();
           setOrderId("");
           setOrderToken("");
           setOriginalsUploaded(false);
         }
-        throw new Error(await parseError(pickResponse));
+        throw new PhotoTestFlowError({
+          message: await parseError(pickResponse),
+          stage: "picker_request",
+          code: "picker_http",
+          status: pickResponse.status,
+          retryable:
+            pickResponse.status === 408 ||
+            pickResponse.status === 429 ||
+            pickResponse.status >= 500,
+        });
       }
 
-      const pickData = (await pickResponse.json()) as PhotoPickResponse;
+      failureStage = "picker_response";
+      let pickData: PhotoPickResponse;
+      try {
+        pickData = (await pickResponse.json()) as PhotoPickResponse;
+      } catch {
+        throw new PhotoTestFlowError({
+          message: "Could not pick a photo right now. Try again.",
+          stage: "picker_response",
+          code: "picker_response_invalid",
+          retryable: true,
+        });
+      }
       if (!isPhotoPick(pickData.pick)) {
-        throw new Error("Could not pick a photo right now. Try again.");
+        throw new PhotoTestFlowError({
+          message: "Could not pick a photo right now. Try again.",
+          stage: "picker_response",
+          code: "picker_response_invalid",
+          retryable: true,
+        });
       }
       if (selectionVersion !== selectionVersionRef.current) return;
 
@@ -668,34 +1089,104 @@ export default function PhotoTestAdPage() {
           ? { set_quality: richPick.setQuality }
           : { confidence: pickData.pick.confidence }),
         cached: Boolean(pickData.cached),
-        latency_ms: Math.round(performance.now() - startedAt),
+        latency_ms: Math.round(nowMs() - startedAt),
         variant: "ad",
       });
     } catch (caught) {
-      if (selectionVersion !== selectionVersionRef.current) return;
+      if (
+        pipelineController.signal.aborted ||
+        selectionVersion !== selectionVersionRef.current ||
+        isPhotoUploadCancelled(caught)
+      ) {
+        return;
+      }
       const message =
         caught instanceof Error
           ? caught.message
           : "Could not pick a photo right now. Try again.";
+      const failure = flowFailureDetails(caught, failureStage);
+      const failureOrderId =
+        attemptedOrderId ||
+        uploadSessionRef.current?.response.orderId ||
+        undefined;
       setError(message);
+      captureFlowFailure({
+        stage: failure.stage,
+        code: failure.code,
+        status: failure.status,
+        retryable: failure.retryable,
+        attempt: failure.attempt,
+        photoPosition: failure.photoPosition,
+        orderIdOverride: failureOrderId,
+        elapsedMs: Math.round(nowMs() - startedAt),
+      });
       posthog.capture("ai_pick_failed", {
-        order_id: attemptedOrderId || undefined,
+        order_id: failureOrderId,
+        pick_id: pickId || undefined,
         package_id: adPackageId,
         photo_count: requiredPhotoCount,
         error_message: message,
+        failure_stage: failure.stage,
+        failure_code: failure.code,
+        ...(failure.status === undefined
+          ? {}
+          : { http_status: failure.status }),
+        retryable: failure.retryable,
+        ...(failure.attempt === undefined
+          ? {}
+          : { attempt: failure.attempt }),
+        ...(failure.photoPosition === undefined
+          ? {}
+          : { photo_position: failure.photoPosition }),
+        latency_ms: Math.round(nowMs() - startedAt),
         variant: "ad",
       });
     } finally {
+      if (activePipelineControllerRef.current === pipelineController) {
+        activePipelineControllerRef.current = null;
+      }
       preparingPickRef.current = false;
       setIsPreparingPick(false);
+      setPipelineStage("idle");
     }
   }
 
   async function startCheckout() {
     if (isSubmitting) return;
+    const checkoutStartedAt = nowMs();
+    posthog.capture("photo_test_cta_clicked", {
+      step: activeStep,
+      next_step: "stripe_checkout",
+      cta_label: "Unlock my swipe score",
+      package_id: adPackageId,
+      order_id: orderId || undefined,
+      variant: "ad",
+    });
+    posthog.capture("photo_test_checkout_attempted", {
+      package_id: adPackageId,
+      voter_age_range: voterAgeRange,
+      photo_count: requiredPhotoCount,
+      order_id: orderId || undefined,
+      variant: "ad",
+    });
+
     const validationError = validateForm();
     if (validationError) {
       setError(validationError);
+      posthog.capture("photo_test_checkout_failed", {
+        failure_stage: "checkout_validation",
+        failure_code: "checkout_prerequisites_missing",
+        retryable: false,
+        package_id: adPackageId,
+        order_id: orderId || undefined,
+        variant: "ad",
+      });
+      captureFlowFailure({
+        stage: "checkout_validation",
+        code: "checkout_prerequisites_missing",
+        retryable: false,
+        elapsedMs: Math.round(nowMs() - checkoutStartedAt),
+      });
       return;
     }
 
@@ -711,12 +1202,33 @@ export default function PhotoTestAdPage() {
         body: JSON.stringify({ orderToken, voterAgeRange }),
       });
 
-      if (!checkoutResponse.ok) throw new Error(await parseError(checkoutResponse));
-      const checkout = (await checkoutResponse.json()) as {
+      if (!checkoutResponse.ok) {
+        throw new PhotoTestFlowError({
+          message: await parseError(checkoutResponse),
+          stage: "checkout",
+          code: "checkout_http",
+          status: checkoutResponse.status,
+          retryable:
+            checkoutResponse.status === 408 ||
+            checkoutResponse.status === 429 ||
+            checkoutResponse.status >= 500,
+        });
+      }
+      let checkout: {
         ok: true;
         checkoutUrl: string;
         initiateCheckoutEventId: string;
       };
+      try {
+        checkout = (await checkoutResponse.json()) as typeof checkout;
+      } catch {
+        throw new PhotoTestFlowError({
+          message: "Could not open checkout. Try again.",
+          stage: "checkout",
+          code: "checkout_response_invalid",
+          retryable: true,
+        });
+      }
 
       window.fbq?.(
         "track",
@@ -739,16 +1251,45 @@ export default function PhotoTestAdPage() {
           currency: PHOTO_TEST_CURRENCY,
         }),
       });
-      posthog.capture("checkout_initiated", {
-        package_id: adPackageId,
-        voter_age_range: voterAgeRange,
-        photo_count: requiredPhotoCount,
-        order_id: orderId,
-        variant: "ad",
-      });
+      posthog.capture(
+        "checkout_initiated",
+        {
+          package_id: adPackageId,
+          voter_age_range: voterAgeRange,
+          photo_count: requiredPhotoCount,
+          order_id: orderId,
+          variant: "ad",
+        },
+        { send_instantly: true, transport: "sendBeacon" },
+      );
       window.location.href = checkout.checkoutUrl;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Something went wrong. Try again.");
+      const message =
+        caught instanceof Error
+          ? caught.message
+          : "Something went wrong. Try again.";
+      const failure = flowFailureDetails(caught, "checkout");
+      setError(message);
+      posthog.capture("photo_test_checkout_failed", {
+        failure_stage: failure.stage,
+        failure_code: failure.code,
+        retryable: failure.retryable,
+        ...(failure.status === undefined
+          ? {}
+          : { http_status: failure.status }),
+        package_id: adPackageId,
+        order_id: orderId || undefined,
+        elapsed_ms: Math.round(nowMs() - checkoutStartedAt),
+        variant: "ad",
+      });
+      captureFlowFailure({
+        stage: failure.stage,
+        code: failure.code,
+        status: failure.status,
+        retryable: failure.retryable,
+        orderIdOverride: orderId || undefined,
+        elapsedMs: Math.round(nowMs() - checkoutStartedAt),
+      });
       setIsSubmitting(false);
     }
   }
@@ -913,8 +1454,8 @@ export default function PhotoTestAdPage() {
             {isPreparingPhoto
               ? "Preparing your photo..."
               : isPreparingPick
-              ? "Finding your strongest opener..."
-              : `${readyCount}/3 dating pics ready`}
+                ? pipelineStatusCopy || "Preparing your photos..."
+                : `${readyCount}/3 dating pics ready`}
           </p>
         </section>
       );
@@ -1089,7 +1630,9 @@ export default function PhotoTestAdPage() {
                 key={`next-${activeStep}`}
                 className={styles.navButton}
                 type="button"
-                disabled={isPreparingPhoto || isPreparingPick}
+                disabled={
+                  isPreparingPhoto || isPreparingPick || uploadCtaDisabled
+                }
                 aria-busy={
                   activeStep === "upload" &&
                   (isPreparingPhoto || isPreparingPick)
@@ -1106,7 +1649,7 @@ export default function PhotoTestAdPage() {
                     (isPreparingPhoto || isPreparingPick)
                       ? isPreparingPhoto
                         ? "Preparing photo..."
-                        : "Picking your best..."
+                        : pipelineStatusCopy || "Preparing your photos..."
                       : nextLabelByStep[activeStep]}
                   </span>
                 </span>
