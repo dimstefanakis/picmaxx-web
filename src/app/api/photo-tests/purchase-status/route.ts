@@ -63,6 +63,7 @@ export async function POST(request: Request) {
         session.metadata?.purchaseEventUuid ||
         postHogEventUuid("photo-test-purchase", orderId),
       packageId,
+      offerVariant: session.metadata?.offerVariant ?? "",
       contentName: photoTestPackages[packageId].title,
       amountCents: session.amount_total ?? PHOTO_TEST_PRICE_CENTS,
       currency: session.currency ?? PHOTO_TEST_CURRENCY,

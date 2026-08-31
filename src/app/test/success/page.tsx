@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import posthog from "posthog-js";
 
+import { clearPhotoTestCheckoutResume } from "@/lib/client/photo-test-checkout-resume";
 import {
   createTikTokCommerceProperties,
   trackTikTokEvent,
@@ -22,6 +23,7 @@ type PaidPurchase = {
   eventId: string;
   purchaseEventUuid: string;
   packageId: string;
+  offerVariant: string;
   contentName: string;
   amountCents: number;
   currency: string;
@@ -32,6 +34,7 @@ export default function PhotoTestSuccessPage() {
     const orderId = new URLSearchParams(window.location.search).get("order");
     const sessionId = new URLSearchParams(window.location.search).get("session_id");
     if (!orderId || !sessionId) return;
+    clearPhotoTestCheckoutResume(window.sessionStorage, orderId);
 
     let cancelled = false;
     let pixelRetryTimeout: number | undefined;
@@ -71,6 +74,7 @@ export default function PhotoTestSuccessPage() {
               order_id: paidPurchase.eventId,
               stripe_session_id: sessionId,
               package_id: paidPurchase.packageId,
+              offer_variant: paidPurchase.offerVariant || undefined,
               amount_cents: paidPurchase.amountCents,
               value: paidPurchase.amountCents / 100,
               currency: paidPurchase.currency.toUpperCase(),
@@ -176,15 +180,19 @@ export default function PhotoTestSuccessPage() {
 
       <section className={styles.flow}>
         <div className={styles.hero}>
-          <p className={styles.eyebrow}>test live</p>
-          <h1 className={styles.title}>Your test is live.</h1>
+          <p className={styles.eyebrow}>payment complete</p>
+          <h1 className={styles.title}>Your scorecard is on the way.</h1>
           <p className={styles.subcopy}>
-            Your score and private feedback arrive by email within 24 hours.
+            We&apos;ll send the full result to the email used at checkout within
+            24 hours.
           </p>
         </div>
         <div className={styles.summary}>
           <span>What happens now</span>
-          <strong>Real women review your photo privately. You get the result by email.</strong>
+          <strong>
+            20 women rate your photo. We calculate the scorecard and email it
+            to you.
+          </strong>
         </div>
         <Link className={styles.checkoutButton} href="/">
           <span>Back to Picmaxx</span>

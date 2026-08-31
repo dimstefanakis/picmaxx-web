@@ -18,10 +18,16 @@ import {
   PhotoTestPackageId,
   VoterAgeRange,
   inferImageType,
+  photoTestAdCheckout,
   photoTestPackages,
   validatePhotoMeta,
   voterAgeRanges,
 } from "@/lib/photo-test";
+import {
+  clearPhotoTestCheckoutResume,
+  readPhotoTestCheckoutResume,
+  savePhotoTestCheckoutResume,
+} from "@/lib/client/photo-test-checkout-resume";
 import {
   PhotoUploadError,
   isPhotoUploadCancelled,
@@ -51,6 +57,7 @@ type UploadResponse = {
   ok: true;
   orderId: string;
   orderToken: string;
+  expiresAt: number;
   uploads: {
     key: string;
     uploadUrl: string;
@@ -143,9 +150,22 @@ const nextLabelByStep: Record<StepId, string> = {
   intro: "Get more matches",
   how: "Choose my pics",
   upload: "Find my best pic",
-  winner: "See how it performs IRL",
+  winner: "See how women read it",
   range: "Next",
 };
+const scorecardOutcomes = [
+  { label: "Swiped right", unit: "/20" },
+  { label: "Would date you", unit: "/20" },
+  { label: "Would hook up", unit: "/20" },
+] as const;
+const scorecardAssumptions = [
+  { label: "High body count vibe", unit: "/10" },
+  { label: "Fuckboy score", unit: "/10" },
+  { label: "Boyfriend material", unit: "/10" },
+  { label: "Dominance", unit: "/10" },
+  { label: "Status", unit: "/10" },
+  { label: "Intelligence", unit: "/10" },
+] as const;
 const comparisonPhotos = {
   before: {
     src: "/demo-photos/picmaxx-before.webp",
@@ -409,8 +429,11 @@ export default function PhotoTestAdPage() {
   const [isDraggingComparison, setIsDraggingComparison] = useState(false);
   const [orderId, setOrderId] = useState("");
   const [orderToken, setOrderToken] = useState("");
+  const [orderExpiresAt, setOrderExpiresAt] = useState(0);
   const [originalsUploaded, setOriginalsUploaded] = useState(false);
   const [photoPick, setPhotoPick] = useState<PhotoPick | null>(null);
+  const [isRestoredCheckout, setIsRestoredCheckout] = useState(false);
+  const [hasCheckedCheckoutResume, setHasCheckedCheckoutResume] = useState(false);
   const [photosBeingPrepared, setPhotosBeingPrepared] = useState(0);
   const [isPreparingPick, setIsPreparingPick] = useState(false);
   const [pipelineStage, setPipelineStage] = useState<PipelineStage>("idle");
@@ -441,6 +464,49 @@ export default function PhotoTestAdPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const restoreTimeout = window.setTimeout(() => {
+      const searchParams = new URLSearchParams(window.location.search);
+      const cancelledOrderId = searchParams.get("order") ?? "";
+      const isCancelledCheckout =
+        searchParams.get("checkout") === "cancelled" &&
+        cancelledOrderId.length > 0;
+
+      if (!isCancelledCheckout) {
+        setHasCheckedCheckoutResume(true);
+        return;
+      }
+
+      const resumeState = readPhotoTestCheckoutResume(
+        window.sessionStorage,
+        cancelledOrderId,
+      );
+      if (resumeState) {
+        setOrderId(resumeState.orderId);
+        setOrderToken(resumeState.orderToken);
+        setOrderExpiresAt(resumeState.expiresAt);
+        setVoterAgeRange(resumeState.voterAgeRange);
+        setOriginalsUploaded(true);
+        setIsRestoredCheckout(true);
+        setActiveStep("range");
+      } else {
+        setError("That checkout expired. Start again.");
+      }
+
+      posthog.capture("photo_test_checkout_cancel_returned", {
+        order_id: cancelledOrderId,
+        restored: Boolean(resumeState),
+        package_id: adPackageId,
+        voter_age_range: resumeState?.voterAgeRange,
+        variant: "ad",
+        offer_variant: photoTestAdCheckout.offerVariant,
+      });
+      setHasCheckedCheckoutResume(true);
+    }, 0);
+
+    return () => window.clearTimeout(restoreTimeout);
+  }, []);
+
   const selectedPackage = photoTestPackages[adPackageId];
   const maxPhotos = selectedPackage.maxPhotoCount;
   const visiblePhotos = photos.slice(0, maxPhotos);
@@ -453,6 +519,7 @@ export default function PhotoTestAdPage() {
   const activeStepIndex = stepOrder.indexOf(activeStep);
   const isFirstStep = activeStepIndex === 0;
   const isFinalStep = activeStep === "range";
+  const showBackButton = !isFirstStep && !isRestoredCheckout;
   const winningPhoto = photoPick ? photos[photoPick.winnerIndex] : null;
   const richPhotoPick =
     photoPick && hasPhotoPickNarrative(photoPick) ? photoPick : null;
@@ -470,13 +537,16 @@ export default function PhotoTestAdPage() {
             : "";
 
   useEffect(() => {
+    if (!hasCheckedCheckoutResume) return;
+
     posthog.capture("photo_test_step_viewed", {
       step: activeStep,
       step_number: activeStepIndex + 1,
       package_id: adPackageId,
       variant: "ad",
+      offer_variant: photoTestAdCheckout.offerVariant,
     });
-  }, [activeStep, activeStepIndex]);
+  }, [activeStep, activeStepIndex, hasCheckedCheckoutResume]);
 
   function captureFlowFailure({
     stage,
@@ -522,13 +592,18 @@ export default function PhotoTestAdPage() {
   }
 
   function invalidatePreparedPick() {
+    if (orderId) {
+      clearPhotoTestCheckoutResume(window.sessionStorage, orderId);
+    }
     selectionVersionRef.current += 1;
     activePipelineControllerRef.current?.abort();
     resetUploadSession();
     setOrderId("");
     setOrderToken("");
+    setOrderExpiresAt(0);
     setOriginalsUploaded(false);
     setPhotoPick(null);
+    setIsRestoredCheckout(false);
     setPipelineStage("idle");
   }
 
@@ -537,6 +612,7 @@ export default function PhotoTestAdPage() {
       package_id: adPackageId,
       voter_age_range: nextRange,
       variant: "ad",
+      offer_variant: photoTestAdCheckout.offerVariant,
     });
     setVoterAgeRange(nextRange);
   }
@@ -671,6 +747,14 @@ export default function PhotoTestAdPage() {
     });
   }
 
+  function trackPhotoSlotClick(index: number) {
+    posthog.capture("lead_photo_upload_clicked", {
+      photo_index: index,
+      package_id: adPackageId,
+      variant: "ad",
+    });
+  }
+
   function goBack(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
     if (isFirstStep || isPreparingPhoto || isPreparingPick || isSubmitting) {
@@ -699,6 +783,7 @@ export default function PhotoTestAdPage() {
       cta_label: nextLabelByStep[activeStep],
       package_id: adPackageId,
       variant: "ad",
+      offer_variant: photoTestAdCheckout.offerVariant,
     });
     if (activeStep === "upload") {
       void preparePhotoPick();
@@ -711,10 +796,14 @@ export default function PhotoTestAdPage() {
   }
 
   function validateForm() {
-    if (readyCount !== requiredPhotoCount) {
-      return "Add all 3 photos.";
-    }
-    if (!orderToken || !originalsUploaded || !photoPick) {
+    const liveCheckoutIsReady =
+      readyCount === requiredPhotoCount &&
+      Boolean(orderToken && originalsUploaded && photoPick);
+    const restoredCheckoutIsReady =
+      isRestoredCheckout &&
+      Boolean(orderToken && originalsUploaded && orderExpiresAt > 0);
+
+    if (!liveCheckoutIsReady && !restoredCheckoutIsReady) {
       return "Pick your best photo first.";
     }
     return "";
@@ -787,7 +876,16 @@ export default function PhotoTestAdPage() {
         });
       }
 
-      if (initData.uploads.length !== requiredPhotoCount) {
+      if (
+        typeof initData.orderId !== "string" ||
+        initData.orderId.length === 0 ||
+        typeof initData.orderToken !== "string" ||
+        initData.orderToken.length === 0 ||
+        !Number.isFinite(initData.expiresAt) ||
+        initData.expiresAt <= 0 ||
+        !Array.isArray(initData.uploads) ||
+        initData.uploads.length !== requiredPhotoCount
+      ) {
         throw new PhotoTestFlowError({
           message: "Photo upload could not start. Try again.",
           stage: "order_init",
@@ -803,6 +901,7 @@ export default function PhotoTestAdPage() {
       uploadSessionRef.current = session;
       setOrderId(initData.orderId);
       setOrderToken(initData.orderToken);
+      setOrderExpiresAt(initData.expiresAt);
       setOriginalsUploaded(false);
     }
 
@@ -896,6 +995,7 @@ export default function PhotoTestAdPage() {
           resetUploadSession();
           setOrderId("");
           setOrderToken("");
+          setOrderExpiresAt(0);
           setOriginalsUploaded(false);
         }
         throw rejectedUpload.reason;
@@ -958,8 +1058,8 @@ export default function PhotoTestAdPage() {
 
     try {
       const uploadResult =
-        orderToken && orderId && originalsUploaded
-          ? { orderId, orderToken }
+        orderToken && orderId && orderExpiresAt && originalsUploaded
+          ? { orderId, orderToken, expiresAt: orderExpiresAt }
           : await createAndUploadOrder(
               finalPhotos,
               pipelineController.signal,
@@ -972,6 +1072,7 @@ export default function PhotoTestAdPage() {
       attemptedOrderId = nextOrderId;
       setOrderId(nextOrderId);
       setOrderToken(nextOrderToken);
+      setOrderExpiresAt(uploadResult.expiresAt);
       setOriginalsUploaded(true);
 
       failureStage = "analysis_copy";
@@ -1037,6 +1138,7 @@ export default function PhotoTestAdPage() {
           resetUploadSession();
           setOrderId("");
           setOrderToken("");
+          setOrderExpiresAt(0);
           setOriginalsUploaded(false);
         }
         throw new PhotoTestFlowError({
@@ -1157,10 +1259,11 @@ export default function PhotoTestAdPage() {
     posthog.capture("photo_test_cta_clicked", {
       step: activeStep,
       next_step: "stripe_checkout",
-      cta_label: "Unlock my swipe score",
+      cta_label: "Get my full scorecard",
       package_id: adPackageId,
       order_id: orderId || undefined,
       variant: "ad",
+      offer_variant: photoTestAdCheckout.offerVariant,
     });
     posthog.capture("photo_test_checkout_attempted", {
       package_id: adPackageId,
@@ -1168,6 +1271,7 @@ export default function PhotoTestAdPage() {
       photo_count: requiredPhotoCount,
       order_id: orderId || undefined,
       variant: "ad",
+      offer_variant: photoTestAdCheckout.offerVariant,
     });
 
     const validationError = validateForm();
@@ -1180,6 +1284,7 @@ export default function PhotoTestAdPage() {
         package_id: adPackageId,
         order_id: orderId || undefined,
         variant: "ad",
+        offer_variant: photoTestAdCheckout.offerVariant,
       });
       captureFlowFailure({
         stage: "checkout_validation",
@@ -1230,6 +1335,21 @@ export default function PhotoTestAdPage() {
         });
       }
 
+      const resumeSaved = savePhotoTestCheckoutResume(window.sessionStorage, {
+        orderId,
+        orderToken,
+        voterAgeRange,
+        expiresAt: orderExpiresAt,
+      });
+      if (!resumeSaved) {
+        posthog.capture("photo_test_checkout_resume_storage_failed", {
+          order_id: orderId,
+          package_id: adPackageId,
+          variant: "ad",
+          offer_variant: photoTestAdCheckout.offerVariant,
+        });
+      }
+
       window.fbq?.(
         "track",
         "InitiateCheckout",
@@ -1259,6 +1379,7 @@ export default function PhotoTestAdPage() {
           photo_count: requiredPhotoCount,
           order_id: orderId,
           variant: "ad",
+          offer_variant: photoTestAdCheckout.offerVariant,
         },
         { send_instantly: true, transport: "sendBeacon" },
       );
@@ -1281,6 +1402,7 @@ export default function PhotoTestAdPage() {
         order_id: orderId || undefined,
         elapsed_ms: Math.round(nowMs() - checkoutStartedAt),
         variant: "ad",
+        offer_variant: photoTestAdCheckout.offerVariant,
       });
       captureFlowFailure({
         stage: failure.stage,
@@ -1412,10 +1534,10 @@ export default function PhotoTestAdPage() {
             </div>
             <div className={styles.contextItem}>
               <span>03</span>
-              <strong>Get your swipe score</strong>
+              <strong>Get your real-world scorecard</strong>
               <p>
-                20 real women score the winning pic out of 10, so you know how
-                it actually lands.
+                20 real women reveal who would swipe, date, or hook up, plus
+                what they assume from the photo.
               </p>
             </div>
           </div>
@@ -1438,15 +1560,9 @@ export default function PhotoTestAdPage() {
                 index={index}
                 photo={photos[index]}
                 disabled={isPreparingPhoto || isPreparingPick}
-                onClick={() =>
-                  posthog.capture("lead_photo_upload_clicked", {
-                    photo_index: index,
-                    package_id: adPackageId,
-                    variant: "ad",
-                  })
-                }
-                onChange={(event) => replacePhoto(index, event)}
-                onRemove={() => removePhoto(index)}
+                onClick={trackPhotoSlotClick}
+                onChange={replacePhoto}
+                onRemove={removePhoto}
               />
             ))}
           </div>
@@ -1489,23 +1605,12 @@ export default function PhotoTestAdPage() {
                 />
                 <span>Photo {photoPick.winnerIndex + 1}</span>
               </div>
-              <div className={styles.winnerCopy}>
-                <span>
-                  {richPhotoPick?.setQuality === "weak"
-                    ? "The honest take"
-                    : "Why this one"}
-                </span>
-                {richPhotoPick?.strength ? (
-                  <p className={styles.winnerStrength}>
-                    {richPhotoPick.strength}
-                  </p>
-                ) : null}
-                <p className={styles.winnerDiagnosis}>
-                  {richPhotoPick?.diagnosis ?? photoPick.reason}
-                </p>
-              </div>
             </div>
           ) : null}
+          <p className={styles.winnerBridge}>
+            We found your best photo. Now see how it actually performs with
+            women.
+          </p>
         </section>
       );
     }
@@ -1516,37 +1621,94 @@ export default function PhotoTestAdPage() {
           className={`${styles.stepPanel} ${styles.scoreStep}`}
           aria-labelledby="score-title"
         >
+          {isRestoredCheckout ? (
+            <p className={styles.checkoutReturnNotice} role="status">
+              Payment was not completed. Your scorecard is still ready.
+            </p>
+          ) : null}
           <div className={styles.stepCopyBlock}>
-            <span className={styles.stepKicker}>Best of your three.</span>
+            <span className={styles.stepKicker}>Your real-world scorecard</span>
             <h2
               id="score-title"
               className={`${styles.stepTitle} ${styles.scoreStepTitle}`}
             >
-              Now get its real-world swipe score.
+              Get the numbers women won&apos;t say to your face.
             </h2>
             <p className={styles.stepText}>
-              {richPhotoPick?.bridge ??
-                "Winning this set only makes it your best option. See how 20 real women in your dating range score it."}
+              20 women in your dating range judge this photo like they would on
+              an app. See how many swipe right, how many would date or hook up,
+              and what they assume about you.
             </p>
           </div>
 
-          <div
-            className={styles.scoreMeter}
-            role="img"
-            aria-label="Your 20-woman photo score is locked"
+          <section
+            className={styles.scorecardPreview}
+            aria-label="Locked preview of your full scorecard"
           >
-            <div className={styles.scoreBlurredDigits} aria-hidden="true">
-              <i />
-              <i className={styles.scoreBlurDot} />
-              <i />
+            <div className={styles.scorecardHeader}>
+              <span>20-woman report</span>
+              <b aria-label="Scorecard locked">👀</b>
             </div>
-            <span>/10</span>
-            <b>Score locked</b>
-          </div>
+
+            <div
+              className={`${styles.scorecardHero} ${winningPhoto ? "" : styles.scorecardHeroWithoutPhoto}`}
+            >
+              {winningPhoto ? (
+                <div className={styles.scorecardPhoto}>
+                  {/* Object URLs are local browser previews and bypass image optimization. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={winningPhoto.previewUrl}
+                    alt="Winning dating profile photo selected for this scorecard"
+                  />
+                  <span>Your winning photo</span>
+                </div>
+              ) : null}
+
+              <dl className={styles.scorecardPrimary}>
+                <div>
+                  <dt>Real-world swipe score</dt>
+                  <dd>
+                    <strong aria-label="Score locked">👀</strong>
+                    <em>/10</em>
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
+            <dl className={styles.scorecardOutcomes}>
+              {scorecardOutcomes.map((metric) => (
+                <div key={metric.label}>
+                  <dt>{metric.label}</dt>
+                  <dd>
+                    <strong aria-label={`${metric.label} locked`}>👀</strong>
+                    <em>{metric.unit}</em>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+
+            <div className={styles.scorecardSectionLabel}>
+              What women assume from this photo
+            </div>
+
+            <dl className={styles.scorecardAssumptions}>
+              {scorecardAssumptions.map((metric) => (
+                <div key={metric.label}>
+                  <dt>{metric.label}</dt>
+                  <dd>
+                    <strong aria-label={`${metric.label} locked`}>👀</strong>
+                    {metric.unit ? <em>{metric.unit}</em> : null}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+
+          </section>
 
           <div className={styles.rangeBlock}>
             <div className={styles.rangeHeading}>
-              <strong>Who should score it?</strong>
+              <strong>Who should judge it?</strong>
               <span>Choose the women you actually want to match with.</span>
             </div>
             <div
@@ -1588,75 +1750,87 @@ export default function PhotoTestAdPage() {
       </header>
 
       <div className={styles.stepForm}>
-        <div className={styles.stepViewport}>{renderStep()}</div>
+        <div className={styles.stepViewport}>
+          {hasCheckedCheckoutResume ? renderStep() : null}
+        </div>
 
-        <div className={styles.stepActions}>
-          {error ? (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          ) : null}
-
-          <div className={styles.stepButtonRow}>
-            {!isFirstStep ? (
-              <button
-                key="back"
-                className={`${styles.navButton} ${styles.navButtonSecondary}`}
-                type="button"
-                disabled={isPreparingPhoto || isPreparingPick || isSubmitting}
-                onClick={goBack}
-              >
-                Back
-              </button>
+        {hasCheckedCheckoutResume ? (
+          <div className={styles.stepActions}>
+            {error ? (
+              <p className={styles.error} role="alert">
+                {error}
+              </p>
             ) : null}
 
-            {isFinalStep ? (
-              <button
-                key="checkout"
-                className={styles.checkoutButton}
-                type="button"
-                disabled={isSubmitting}
-                aria-busy={isSubmitting}
-                onClick={startCheckout}
-              >
-                <span className={styles.checkoutButtonText}>
-                  {isSubmitting ? <span className={styles.buttonSpinner} aria-hidden="true" /> : null}
-                  <span>Unlock my swipe score</span>
-                </span>
-                <strong>$9</strong>
-              </button>
-            ) : (
-              <button
-                key={`next-${activeStep}`}
-                className={styles.navButton}
-                type="button"
-                disabled={
-                  isPreparingPhoto || isPreparingPick || uploadCtaDisabled
-                }
-                aria-busy={
-                  activeStep === "upload" &&
-                  (isPreparingPhoto || isPreparingPick)
-                }
-                onClick={goNext}
-              >
-                <span className={styles.navButtonText}>
-                  {activeStep === "upload" &&
-                  (isPreparingPhoto || isPreparingPick) ? (
-                    <span className={styles.buttonSpinner} aria-hidden="true" />
-                  ) : null}
-                  <span>
-                    {activeStep === "upload" &&
-                    (isPreparingPhoto || isPreparingPick)
-                      ? isPreparingPhoto
-                        ? "Preparing photo..."
-                        : pipelineStatusCopy || "Preparing your photos..."
-                      : nextLabelByStep[activeStep]}
+            <div className={styles.stepButtonRow}>
+              {showBackButton ? (
+                <button
+                  key="back"
+                  className={`${styles.navButton} ${styles.navButtonSecondary}`}
+                  type="button"
+                  disabled={isPreparingPhoto || isPreparingPick || isSubmitting}
+                  onClick={goBack}
+                >
+                  Back
+                </button>
+              ) : null}
+
+              {isFinalStep ? (
+                <button
+                  key="checkout"
+                  className={styles.checkoutButton}
+                  type="button"
+                  disabled={isSubmitting}
+                  aria-busy={isSubmitting}
+                  onClick={startCheckout}
+                >
+                  <span className={styles.checkoutButtonText}>
+                    {isSubmitting ? (
+                      <span
+                        className={styles.buttonSpinner}
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    <span>Get my full scorecard</span>
                   </span>
-                </span>
-              </button>
-            )}
+                  <strong>$9</strong>
+                </button>
+              ) : (
+                <button
+                  key={`next-${activeStep}`}
+                  className={styles.navButton}
+                  type="button"
+                  disabled={
+                    isPreparingPhoto || isPreparingPick || uploadCtaDisabled
+                  }
+                  aria-busy={
+                    activeStep === "upload" &&
+                    (isPreparingPhoto || isPreparingPick)
+                  }
+                  onClick={goNext}
+                >
+                  <span className={styles.navButtonText}>
+                    {activeStep === "upload" &&
+                    (isPreparingPhoto || isPreparingPick) ? (
+                      <span
+                        className={styles.buttonSpinner}
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    <span>
+                      {activeStep === "upload" &&
+                      (isPreparingPhoto || isPreparingPick)
+                        ? isPreparingPhoto
+                          ? "Preparing photo..."
+                          : pipelineStatusCopy || "Preparing your photos..."
+                        : nextLabelByStep[activeStep]}
+                    </span>
+                  </span>
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </main>
   );
@@ -1673,9 +1847,9 @@ function PhotoSlot({
   index: number;
   photo: SelectedPhoto | null;
   disabled: boolean;
-  onClick: () => void;
-  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  onRemove: () => void;
+  onClick: (index: number) => void;
+  onChange: (index: number, event: ChangeEvent<HTMLInputElement>) => void;
+  onRemove: (index: number) => void;
 }) {
   const inputId = `ad-photo-${index}`;
 
@@ -1690,7 +1864,7 @@ function PhotoSlot({
         type="file"
         disabled={disabled}
         accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
-        onChange={onChange}
+        onChange={(event) => onChange(index, event)}
       />
       {photo ? (
         <>
@@ -1700,7 +1874,11 @@ function PhotoSlot({
             <span>Photo {index + 1}</span>
             <strong>{photo.displayName}</strong>
           </div>
-          <button type="button" disabled={disabled} onClick={onRemove}>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onRemove(index)}
+          >
             Replace
           </button>
         </>
@@ -1708,7 +1886,7 @@ function PhotoSlot({
         <label
           htmlFor={inputId}
           aria-disabled={disabled}
-          onClick={disabled ? undefined : onClick}
+          onClick={disabled ? undefined : () => onClick(index)}
         >
           <span>+</span>
           <strong>Photo {index + 1}</strong>

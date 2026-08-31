@@ -133,6 +133,9 @@ export async function POST(request: Request) {
       initiateCheckoutEventId,
       selectedPhotoPosition,
       selectedR2Key: metadataString(selectedR2Key),
+      ...(isAdFlow
+        ? { offerVariant: photoTestAdCheckout.offerVariant }
+        : {}),
       posthogDistinctId: metadataString(
         order.posthogDistinctId || order.email || order.orderId,
       ),
@@ -176,9 +179,13 @@ export async function POST(request: Request) {
           metadata,
         },
         success_url: `${origin}/test/success?order=${encodeURIComponent(order.orderId)}&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${origin}${cancelPath}?order=${encodeURIComponent(order.orderId)}`,
+        cancel_url: isAdFlow
+          ? `${origin}${cancelPath}?checkout=cancelled&order=${encodeURIComponent(order.orderId)}`
+          : `${origin}${cancelPath}?order=${encodeURIComponent(order.orderId)}`,
       },
-      { idempotencyKey: `photo-test-checkout-v1:${order.orderId}` },
+      {
+        idempotencyKey: `photo-test-checkout-v2:${order.orderId}:${voterAgeRange ?? "default"}`,
+      },
     );
 
     await updatePaidTestRecord(order.airtableRecordId, {
@@ -247,6 +254,9 @@ export async function POST(request: Request) {
           voter_age_range: voterAgeRange,
           selected_photo_position: selectedPhotoPosition || undefined,
           variant: isAdFlow ? "ad" : "generic",
+          ...(isAdFlow
+            ? { offer_variant: photoTestAdCheckout.offerVariant }
+            : {}),
           ...(order.posthogSessionId
             ? { $session_id: order.posthogSessionId }
             : {}),

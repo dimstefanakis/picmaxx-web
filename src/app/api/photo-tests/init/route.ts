@@ -8,6 +8,7 @@ import {
   isVoterAgeRange,
   normalizeEmail,
   photoCountLabel,
+  photoTestAdCheckout,
   photoTestPackages,
   validatePhotoMeta,
   type PhotoUploadMeta,
@@ -165,6 +166,7 @@ export async function POST(request: Request) {
     };
     const record = await createPaidTestRecord(recordFields);
 
+    const expiresAt = Date.now() + 60 * 60 * 1000;
     const orderToken = createPhotoTestOrderToken({
       orderId: id,
       airtableRecordId: record.id,
@@ -183,7 +185,7 @@ export async function POST(request: Request) {
       userAgent,
       ipAddress,
       returnPath,
-      expiresAt: Date.now() + 60 * 60 * 1000,
+      expiresAt,
     });
 
     after(() => {
@@ -199,6 +201,9 @@ export async function POST(request: Request) {
           photo_count: files.length,
           source_url: sourceUrl,
           variant: returnPath === "/photo-test" ? "ad" : "generic",
+          ...(returnPath === "/photo-test"
+            ? { offer_variant: photoTestAdCheckout.offerVariant }
+            : {}),
           ...(posthogSessionId ? { $session_id: posthogSessionId } : {}),
         },
       });
@@ -208,6 +213,7 @@ export async function POST(request: Request) {
       ok: true,
       orderId: id,
       orderToken,
+      expiresAt,
       uploads,
     });
   } catch (error) {

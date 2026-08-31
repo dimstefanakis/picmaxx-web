@@ -758,51 +758,8 @@
   text-transform: uppercase;
 }
 
-.winnerCopy {
-  display: grid;
-  align-content: start;
-  justify-items: start;
-  gap: 8px;
-  min-width: 0;
-  padding: 2px 3px 4px;
-}
-
-.winnerCopy > span {
-  width: max-content;
-  max-width: 100%;
-  padding: 5px 7px;
-  border: 1px solid var(--ink);
-  background: var(--blush);
-  font-size: 9px;
-  font-weight: 950;
-  line-height: 1;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.winnerCopy p {
-  margin: 0;
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 900;
-  line-height: 1.25;
-  letter-spacing: 0;
-}
-
-.winnerCopy .winnerStrength {
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1.35;
-}
-
-.winnerCopy .winnerDiagnosis {
-  font-size: 15px;
-  font-weight: 900;
-  line-height: 1.3;
-}
-
 .winnerStep {
-  grid-template-rows: auto minmax(min-content, 1fr);
+  grid-template-rows: auto minmax(min-content, 1fr) auto;
   align-content: stretch;
   gap: 12px;
 }
@@ -816,70 +773,267 @@
   font-size: clamp(34px, 9vw, 46px);
 }
 
+.winnerBridge {
+  justify-self: center;
+  width: min(100%, 300px);
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
 .scoreStep {
-  gap: 16px;
+  gap: 14px;
 }
 
 .scoreStepTitle {
-  max-width: 11ch;
-  font-size: clamp(38px, 10vw, 58px);
+  max-width: 13ch;
+  font-size: clamp(34px, 8.8vw, 48px);
 }
 
-.scoreMeter {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.checkoutReturnNotice {
   width: 100%;
-  min-height: 108px;
-  padding: 18px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ink);
+  background: var(--acid);
+  color: var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  font-size: 11px;
+  font-weight: 950;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.scorecardPreview {
+  overflow: hidden;
+  width: 100%;
   border: 1px solid var(--ink);
   background: var(--ink);
   color: var(--paper);
   box-shadow: 6px 6px 0 var(--acid);
 }
 
-.scoreBlurredDigits {
+.scorecardHeader {
   display: flex;
-  align-items: flex-end;
-  gap: 7px;
-  padding: 0 4px;
-  filter: blur(8px);
-  opacity: 0.84;
-  user-select: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(244, 239, 228, 0.22);
 }
 
-.scoreBlurredDigits i {
-  display: block;
-  width: 24px;
-  height: 48px;
-  border-radius: 7px;
-  background: var(--paper);
+.scorecardHeader span,
+.scorecardHeader b,
+.scorecardSectionLabel,
+.scorecardPreview dt,
+.scorecardPreview dd strong {
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
-.scoreBlurredDigits .scoreBlurDot {
-  width: 9px;
-  height: 9px;
-  margin-bottom: 2px;
-  border-radius: 999px;
-}
-
-.scoreMeter > span {
+.scorecardHeader span {
   color: var(--acid);
-  font-family: var(--font-archivo-black), var(--font-manrope), sans-serif;
-  font-size: 27px;
+  font-size: 10px;
+  font-weight: 950;
   line-height: 1;
 }
 
-.scoreMeter > b {
-  margin-left: auto;
-  padding: 7px 8px;
+.scorecardHeader b {
+  padding: 6px 8px;
   border: 1px solid var(--paper);
   background: var(--acid);
   color: var(--ink);
-  font-size: 9px;
+  font-size: 15px;
   font-weight: 950;
   line-height: 1;
+}
+
+.scorecardPreview dl,
+.scorecardPreview dd {
+  margin: 0;
+}
+
+.scorecardHero {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  min-height: 125px;
+}
+
+.scorecardHeroWithoutPhoto {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+}
+
+.scorecardPhoto {
+  position: relative;
+  overflow: hidden;
+  min-height: 125px;
+  border-right: 1px solid rgba(244, 239, 228, 0.22);
+  background: rgba(244, 239, 228, 0.08);
+}
+
+.scorecardPhoto img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 125px;
+  object-fit: cover;
+}
+
+.scorecardPhoto span {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  left: 6px;
+  padding: 5px 6px;
+  background: var(--acid);
+  color: var(--ink);
+  font-size: 7px;
+  font-weight: 950;
+  line-height: 1;
+  text-align: center;
   text-transform: uppercase;
+}
+
+.scorecardPrimary {
+  display: grid;
+}
+
+.scorecardPrimary > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 14px;
+}
+
+.scorecardHero:not(.scorecardHeroWithoutPhoto) .scorecardPrimary > div {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 10px;
+}
+
+.scorecardPrimary dt {
+  max-width: 12ch;
+  font-family: var(--font-archivo-black), var(--font-manrope), sans-serif;
+  font-size: 24px;
+  line-height: 0.94;
+}
+
+.scorecardPreview dd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.scorecardPreview dd strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 5px 7px;
+  background: var(--acid);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.scorecardPreview dd em {
+  color: var(--acid);
+  font-family: var(--font-archivo-black), var(--font-manrope), sans-serif;
+  font-style: normal;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.scorecardPrimary dd strong {
+  min-height: 34px;
+  padding: 8px 10px;
+  font-size: 17px;
+}
+
+.scorecardPrimary dd em {
+  font-size: 24px;
+}
+
+.scorecardOutcomes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid rgba(244, 239, 228, 0.22);
+}
+
+.scorecardOutcomes > div {
+  display: grid;
+  align-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  min-height: 84px;
+  padding: 11px 9px;
+}
+
+.scorecardOutcomes > div + div {
+  border-left: 1px solid rgba(244, 239, 228, 0.22);
+}
+
+.scorecardOutcomes dt,
+.scorecardAssumptions dt {
+  color: rgba(244, 239, 228, 0.78);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.12;
+}
+
+.scorecardOutcomes dd {
+  justify-content: flex-start;
+}
+
+.scorecardSectionLabel {
+  padding: 10px 12px;
+  border-top: 1px solid var(--paper);
+  border-bottom: 1px solid rgba(244, 239, 228, 0.22);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-archivo-black), var(--font-manrope), sans-serif;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.scorecardAssumptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.scorecardAssumptions > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(244, 239, 228, 0.18);
+}
+
+.scorecardAssumptions > div:nth-child(even) {
+  border-left: 1px solid rgba(244, 239, 228, 0.18);
+}
+
+.scorecardAssumptions dd strong {
+  min-height: 22px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.scorecardAssumptions dd em {
+  font-size: 12px;
 }
 
 .rangeBlock,

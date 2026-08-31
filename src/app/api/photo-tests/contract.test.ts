@@ -233,6 +233,7 @@ beforeEach(() => {
       orderId: "pmx_contract_test",
       packageId: "single",
       purchaseEventUuid: PURCHASE_EVENT_UUID,
+      offerVariant: "women_scorecard_v1",
     },
   };
   constructedWebhookEvent = {
@@ -254,6 +255,7 @@ beforeEach(() => {
           sourceUrl: "https://picmaxx.test/photo-test",
           voterAgeRange: "25-34",
           selectedPhotoPosition: "2",
+          offerVariant: "women_scorecard_v1",
         },
       },
     },
@@ -311,6 +313,7 @@ describe("photo-test init contract", () => {
       ok: true;
       orderId: string;
       orderToken: string;
+      expiresAt: number;
       uploads: unknown[];
     };
 
@@ -327,6 +330,7 @@ describe("photo-test init contract", () => {
     expect(signedOrder.voterAgeRange).toBeUndefined();
     expect(signedOrder.posthogDistinctId).toBe(POSTHOG_DISTINCT_ID);
     expect(signedOrder.posthogSessionId).toBe(POSTHOG_SESSION_ID);
+    expect(payload.expiresAt).toBe(signedOrder.expiresAt);
 
     expect(capturePostHogServerEvent).not.toHaveBeenCalled();
     expect(deferredWork).toHaveLength(1);
@@ -341,6 +345,7 @@ describe("photo-test init contract", () => {
           package_id: "best_of_three",
           photo_count: 3,
           variant: "ad",
+          offer_variant: "women_scorecard_v1",
         }),
       }),
     );
@@ -443,13 +448,17 @@ describe("photo-test checkout contract", () => {
       posthogSessionId: POSTHOG_SESSION_ID,
       selectedPhotoPosition: "2",
       selectedR2Key: "photo-2",
+      offerVariant: "women_scorecard_v1",
     });
     expect(
       (stripeInput.metadata as Record<string, unknown>).purchaseEventUuid,
     ).toMatch(UUID_PATTERN);
     expect(checkoutSessionOptions[0]).toEqual({
-      idempotencyKey: "photo-test-checkout-v1:pmx_contract_test",
+      idempotencyKey: "photo-test-checkout-v2:pmx_contract_test:25-34",
     });
+    expect(stripeInput.cancel_url).toBe(
+      "https://picmaxx.test/photo-test?checkout=cancelled&order=pmx_contract_test",
+    );
     expect(readR2Json).toHaveBeenCalledWith(
       "photo-tests/pmx_contract_test/picker-v1.json",
     );
@@ -460,9 +469,9 @@ describe("photo-test checkout contract", () => {
           currency: "usd",
           unit_amount: 900,
           product_data: {
-            name: "Picmaxx 20-Woman Photo Score",
+            name: "Picmaxx Real-World Swipe Scorecard",
             description:
-              "20 real women score your selected photo out of 10 and explain what helped or hurt.",
+              "Swipe, date, hookup, and first-impression scores from 20 real women in your dating range.",
           },
         },
       },
@@ -484,9 +493,32 @@ describe("photo-test checkout contract", () => {
           value: 9,
           currency: "USD",
           variant: "ad",
+          offer_variant: "women_scorecard_v1",
         }),
       }),
     );
+  });
+
+  it("scopes checkout idempotency to the selected voter age", async () => {
+    const signedOrder = orderToken({ returnPath: "/photo-test" });
+
+    await checkoutPhotoTest(
+      request("/api/photo-tests/checkout", {
+        orderToken: signedOrder,
+        voterAgeRange: "25-34",
+      }),
+    );
+    await checkoutPhotoTest(
+      request("/api/photo-tests/checkout", {
+        orderToken: signedOrder,
+        voterAgeRange: "35-44",
+      }),
+    );
+
+    expect(checkoutSessionOptions).toEqual([
+      { idempotencyKey: "photo-test-checkout-v2:pmx_contract_test:25-34" },
+      { idempotencyKey: "photo-test-checkout-v2:pmx_contract_test:35-44" },
+    ]);
   });
 
   it("rejects an ad checkout when the winning photo was not saved", async () => {
@@ -630,6 +662,7 @@ describe("photo-test purchase analytics contract", () => {
       eventId: "pmx_contract_test",
       purchaseEventUuid: PURCHASE_EVENT_UUID,
       packageId: "single",
+      offerVariant: "women_scorecard_v1",
       contentName: "Lead photo score",
       amountCents: 1_234,
       currency: "eur",
@@ -675,6 +708,7 @@ describe("photo-test purchase analytics contract", () => {
           value: 12.34,
           currency: "EUR",
           source: "stripe_webhook",
+          offer_variant: "women_scorecard_v1",
         }),
       }),
     );

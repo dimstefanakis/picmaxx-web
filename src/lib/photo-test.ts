@@ -34,9 +34,10 @@ export const photoTestPackages = {
 } as const;
 
 export const photoTestAdCheckout = {
-  stripeName: "Picmaxx 20-Woman Photo Score",
+  offerVariant: "women_scorecard_v1",
+  stripeName: "Picmaxx Real-World Swipe Scorecard",
   resultCopy:
-    "20 real women score your selected photo out of 10 and explain what helped or hurt.",
+    "Swipe, date, hookup, and first-impression scores from 20 real women in your dating range.",
 } as const;
 
 export type PhotoTestPackageId = keyof typeof photoTestPackages;

@@ -113,6 +113,9 @@ export async function POST(request: Request) {
           fieldString(session.metadata?.selectedPhotoPosition) !== ""
             ? "ad"
             : "generic",
+        ...(fieldString(session.metadata?.offerVariant)
+          ? { offer_variant: fieldString(session.metadata?.offerVariant) }
+          : {}),
         ...(fieldString(session.metadata?.posthogSessionId)
           ? { $session_id: fieldString(session.metadata?.posthogSessionId) }
           : {}),
